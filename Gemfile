@@ -1,0 +1,7 @@
+source 'https://rubygems.org'
+ruby '>= 3.2'
+gem 'cocoapods', '1.17.0'
+gem 'bigdecimal'
+gem 'logger'
+gem 'benchmark'
+gem 'mutex_m'

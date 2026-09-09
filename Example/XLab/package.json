@@ -1,0 +1,19 @@
+{
+  "name": "@xmax/xlab",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "start": "react-native start",
+    "ios": "react-native run-ios",
+    "android": "react-native run-android"
+  },
+  "dependencies": {
+    "@xmax/react-native-sdk": "file:../..",
+    "react": "19.2.3",
+    "react-native": "0.87.1",
+    "react-native-safe-area-context": "5.9.1"
+  },
+  "engines": {
+    "node": "^22.13.0 || ^24.3.0 || >=26.0.0"
+  }
+}

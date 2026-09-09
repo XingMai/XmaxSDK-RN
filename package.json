@@ -1,0 +1,65 @@
+{
+  "name": "@xmax/react-native-sdk",
+  "version": "0.0.1",
+  "description": "Xmax SDK for React Native",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "lib/commonjs/index.js",
+  "module": "lib/module/index.js",
+  "types": "lib/typescript/index.d.ts",
+  "react-native": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/typescript/index.d.ts",
+      "react-native": "./src/index.ts",
+      "import": "./lib/module/index.js",
+      "require": "./lib/commonjs/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "src",
+    "README.md"
+  ],
+  "workspaces": [
+    "Example/XLab"
+  ],
+  "scripts": {
+    "start": "npm run start --workspace @xmax/xlab --",
+    "ios": "npm run ios --workspace @xmax/xlab --",
+    "android": "npm run android --workspace @xmax/xlab --",
+    "pods": "cd Example/XLab/ios && bundle exec pod install",
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p Example/XLab/tsconfig.json",
+    "lint": "eslint src Example/XLab/App.tsx Example/XLab/src Example/XLab/index.js",
+    "format:check": "prettier --check src scripts Example/XLab/App.tsx Example/XLab/src",
+    "prepack": "npm run build"
+  },
+  "peerDependencies": {
+    "react": "^19.2.3",
+    "react-native": ">=0.87.1 <0.88.0"
+  },
+  "devDependencies": {
+    "@babel/core": "7.25.2",
+    "@babel/preset-env": "7.25.3",
+    "@babel/runtime": "7.25.0",
+    "@react-native-community/cli": "20.2.0",
+    "@react-native-community/cli-platform-android": "20.2.0",
+    "@react-native-community/cli-platform-ios": "20.2.0",
+    "@react-native/babel-preset": "0.87.1",
+    "@react-native/eslint-config": "0.87.1",
+    "@react-native/metro-config": "0.87.1",
+    "@react-native/typescript-config": "0.87.1",
+    "@types/react": "19.2.18",
+    "eslint": "9.39.1",
+    "prettier": "2.8.8",
+    "typescript": "6.0.3",
+    "react": "19.2.3",
+    "react-native": "0.87.1"
+  },
+  "engines": {
+    "node": "^22.13.0 || ^24.3.0 || >=26.0.0"
+  },
+  "packageManager": "npm@11.16.0"
+}

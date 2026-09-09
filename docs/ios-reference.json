@@ -1,0 +1,181 @@
+{
+  "date": "2026-09-09",
+  "root": "/Users/xmax.ai/dev/Xmax/iOS/XmaxSDK",
+  "head": "961fbb37472f9a59f85502ebcacb74d6f5e66caa",
+  "includesUncommittedChanges": true,
+  "authority": "Source contents in the local working tree at the time of this audit; not the pristine HEAD release.",
+  "files": [
+    {
+      "path": "Examples/XLab/XLab/Modules/XLRealtime/UIKit/RealtimeViewController.swift",
+      "sha256": "640cacc8b2e305be9b7e987e3a012d77b427d843090e553812823a228dc8d541"
+    },
+    {
+      "path": "Sources/XmaxSDK/Core/Realtime/RealtimeConfiguration.swift",
+      "sha256": "3bb62e465a8855d96ee97509c19e14098c7c0fcea0fd2ea3c27f403e5e47efcc"
+    },
+    {
+      "path": "Sources/XmaxSDK/Core/Realtime/RealtimeCoordinator.swift",
+      "sha256": "aff7f0eae66265bb59ed4b51185df9922f7835b2357a0220db834f330fa1b5f9"
+    },
+    {
+      "path": "Sources/XmaxSDK/Core/Realtime/RealtimeErrorHandler.swift",
+      "sha256": "14f2256924f172a786b6b8bc83f9c67efce92c75f953bb446aa136264fef7c0d"
+    },
+    {
+      "path": "Sources/XmaxSDK/Core/Realtime/RealtimeMediaSource.swift",
+      "sha256": "16186d78062f2e7adcf00456c0cfda292cdd61cbfce78e31cb92bdeb4b85d5d8"
+    },
+    {
+      "path": "Sources/XmaxSDK/Core/Realtime/RealtimeModel.swift",
+      "sha256": "39862701689b1774a2337148e7f145d36e10c780df1f6dea2a025cd4360ea06e"
+    },
+    {
+      "path": "Sources/XmaxSDK/Core/Realtime/RealtimeTiming.swift",
+      "sha256": "4c7f71fddf7c15ee24642f8d04de87f59e533b77f3406ef3e445a6c0b95ba37b"
+    },
+    {
+      "path": "Sources/XmaxSDK/Core/Realtime/XmaxRealtimeConnectionManager.swift",
+      "sha256": "b0b48ea7944543d888bd074c82ccac0e52103388c9999fb85789fb6be84f85b3"
+    },
+    {
+      "path": "Sources/XmaxSDK/Core/Realtime/XmaxRealtimeGenerationManager.swift",
+      "sha256": "b40d4d165070dc5566a54f08110babc561ac83df343707bd81e9aa83d7aba096"
+    },
+    {
+      "path": "Sources/XmaxSDK/Core/Realtime/XmaxRealtimeManager.swift",
+      "sha256": "5f102cf28056eb8c741f9cacef08648d48d96823c6da46414d24de58a0ca2532"
+    },
+    {
+      "path": "Sources/XmaxSDK/Core/Realtime/XmaxRealtimeManaging+Extension.swift",
+      "sha256": "e3344e03b34668f8bf593d003a89032647cd2ddb281aa460405fe0d7e6b0baac"
+    },
+    {
+      "path": "Sources/XmaxSDK/Core/Realtime/XmaxRealtimeManaging.swift",
+      "sha256": "71e4ee487c1c8aafbf404b6a1c289969fea9406e460f39dc0309a190527cb3c3"
+    },
+    {
+      "path": "Sources/XmaxSDK/Core/Storage/XmaxDownloadedFile.swift",
+      "sha256": "64c765c5c02f7200c711ba48d8131d9520b1ea32ed977140204bd76e723f64fc"
+    },
+    {
+      "path": "Sources/XmaxSDK/Core/Storage/XmaxStorageManager.swift",
+      "sha256": "354d077552edb88705ca7fe1816ebc239536d4930ce3a356e85316267136228a"
+    },
+    {
+      "path": "Sources/XmaxSDK/Core/Storage/XmaxStorageManaging.swift",
+      "sha256": "5c61b3956af84a810597d87c0604a446aac7307d3c4c99e4300e1ab78599ca2d"
+    },
+    {
+      "path": "Sources/XmaxSDK/Core/Storage/XmaxStorageProgressHandler.swift",
+      "sha256": "86dfb0368c7a831a7c1c1dc5f4322e1c8a2d5baf94b0de1c8255ba8b8abeb35a"
+    },
+    {
+      "path": "Sources/XmaxSDK/Core/Storage/XmaxUploadedFile.swift",
+      "sha256": "c96d6799f4886637acb843262914d18b2ce857ebf210ec1f5b96ebedea5c5f6b"
+    },
+    {
+      "path": "Sources/XmaxSDK/Core/XmaxClient.swift",
+      "sha256": "e174afdd07e0a337a163e208394a330252834cdeaaf4a9abe7af6a26fb6f568c"
+    },
+    {
+      "path": "Sources/XmaxSDK/Core/XmaxConfiguration.swift",
+      "sha256": "aebf078f1c740fc3e19586e559453a817572389a89294668625202b167f53146"
+    },
+    {
+      "path": "Sources/XmaxSDK/Core/XmaxEnvironment.swift",
+      "sha256": "991f4777a0dd8f54f3f429f29eb07c90dae3dacb8ed78f0fa8f0e09a2e97d87c"
+    },
+    {
+      "path": "Sources/XmaxSDK/Foundation/Errors/XmaxError.swift",
+      "sha256": "2f08a4b05b8bf41d663e9c4d0ec5f76fa3156c86fa99d449e90329f462b7951d"
+    },
+    {
+      "path": "Sources/XmaxSDK/Foundation/Logging/XmaxLogger.swift",
+      "sha256": "e41901431a1238a88cb174a8514a53e2ca5f4ca7478cba662f8bd8244ce9862e"
+    },
+    {
+      "path": "Sources/XmaxSDK/Foundation/Media/Camera/CameraPosition.swift",
+      "sha256": "97c1515f9f04c3a608e5a75267ff15603f48f09711fc85087a5f4e7df150147c"
+    },
+    {
+      "path": "Sources/XmaxSDK/Foundation/Media/Video/VideoContentMode.swift",
+      "sha256": "4d82d04736bfafe3e5fc681b51be30a5c7f6b04055f91c317e80ee2535593d17"
+    },
+    {
+      "path": "Sources/XmaxSDK/Media/MediaController.swift",
+      "sha256": "a3c721e79e7640451cd359e7b21c6fa31b392ae7c97adbd180affe92c1d3ba6e"
+    },
+    {
+      "path": "Sources/XmaxSDK/Render/Video/XmaxRealtimeVideo.swift",
+      "sha256": "445f7ef998ef5e49b5e4a595b7978b02997910829fad6074fae4868cdc9b1473"
+    },
+    {
+      "path": "Sources/XmaxSDK/Render/Video/XmaxVideo.swift",
+      "sha256": "ad85a433ba4ed88e2f037dd464ae7859e720c1db59cdd63abb59440582c38828"
+    },
+    {
+      "path": "Sources/XmaxSDK/Service/Media/MediaService.swift",
+      "sha256": "9d14fdeaedd880d944e32e225daf8fc9d6b21aedc43b90b9a63e1ee79b7c245d"
+    },
+    {
+      "path": "Sources/XmaxSDK/Service/Media/MediaServicing.swift",
+      "sha256": "5a6e1dc2206495601bb06c05e868f4cec781f55332e10ce61e08a58106235efe"
+    },
+    {
+      "path": "Sources/XmaxSDK/Service/Realtime/RealtimeContext.swift",
+      "sha256": "0b18e0669cc0c8784181b215f7263435f0f5dce81fa310fcabbf8f7e23b0b669"
+    },
+    {
+      "path": "Sources/XmaxSDK/Service/Realtime/RealtimeError.swift",
+      "sha256": "3197c8120666905aa00c1e8112c722a2b7276fda93ac045b805ab090b6c0ce14"
+    },
+    {
+      "path": "Sources/XmaxSDK/Service/Realtime/RealtimeMediaStream.swift",
+      "sha256": "4f7197d86f955c7075123ed809a00b8f74385f06242af329fd9bdcf872a4becf"
+    },
+    {
+      "path": "Sources/XmaxSDK/Service/Realtime/RealtimeNetworkQuality.swift",
+      "sha256": "88a17d95d9f6127f2fc5471a38b79c7d5406e77998fb517a0e3a6af8c2b5913e"
+    },
+    {
+      "path": "Sources/XmaxSDK/Service/Realtime/RealtimePerformanceAlarm.swift",
+      "sha256": "39a685afd0020f2573b644d7708db7bcfb9bd53ed0baf89fd0bae0a094e5e6fd"
+    },
+    {
+      "path": "Sources/XmaxSDK/Service/Realtime/RealtimePoint.swift",
+      "sha256": "096ab6c4b0f5f1bf55bdf69290009f1d14fbf139031b06138814724bf1943455"
+    },
+    {
+      "path": "Sources/XmaxSDK/Service/Realtime/RealtimeSession.swift",
+      "sha256": "009a7f8a3eef7d15e83aabecbc6132d5a1ba5fed34f9b3012dc9f8698767285b"
+    },
+    {
+      "path": "Sources/XmaxSDK/Service/Realtime/RealtimeSessionConnection.swift",
+      "sha256": "0ca71dce71029235c4a31e7f78ec1ea75b079d03a6cfd6995522ef620e87279a"
+    },
+    {
+      "path": "Sources/XmaxSDK/Service/Realtime/RealtimeSessionService.swift",
+      "sha256": "d73212d5ef935aa1a02d0d4485abc96516d3102e5f01890a0e0947b50b5aa779"
+    },
+    {
+      "path": "Sources/XmaxSDK/Service/Realtime/RealtimeSessionServicing.swift",
+      "sha256": "6d99d906153d4b254d2192ae5bf879b43f4c9411a8b922b8267e2e787f283946"
+    },
+    {
+      "path": "Sources/XmaxSDK/Service/Realtime/RealtimeState.swift",
+      "sha256": "98c3c80b383a0043554228d212ce1a72217275b5c460780b0e033ee367296074"
+    },
+    {
+      "path": "Sources/XmaxSDK/Service/Realtime/RealtimeVideoFormat.swift",
+      "sha256": "19e211bc89fdd459ac9f80f4cb0a46cd8bfbfca13911278b1a8e68671a24f088"
+    },
+    {
+      "path": "Sources/XmaxSDK/Service/Realtime/RealtimeVideoTrack.swift",
+      "sha256": "80dec77315eed77dd139db4788ea7be18d750b49d7ff03f3e31db60eff1e7904"
+    },
+    {
+      "path": "Sources/XmaxSDK/Stream/Room/RoomEvent.swift",
+      "sha256": "6c74b437d19ea457239a3e92d3c7c29a4664854927aa685610e87d4ff879aa7a"
+    }
+  ]
+}

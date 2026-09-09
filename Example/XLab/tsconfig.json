@@ -1,0 +1,15 @@
+{
+  "extends": "@react-native/typescript-config",
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "skipLibCheck": true,
+    "paths": {
+      "@xmax/react-native-sdk": ["../../src/index.ts"]
+    },
+    "types": ["react"]
+  },
+  "include": ["App.tsx", "src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["node_modules", "ios/Pods"]
+}
