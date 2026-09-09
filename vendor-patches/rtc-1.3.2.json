@@ -1,0 +1,41 @@
+{
+  "package": "@volcengine/react-native-rtc",
+  "version": "1.3.2",
+  "sourceSHA256": "ce797363e1fad88b6d7daae6dc9c22a9d50dc854374bbe978415a68d2e84fa76",
+  "patches": [
+    {
+      "path": "android/build.gradle",
+      "before": "JavaVersion.VERSION_1_8",
+      "after": "JavaVersion.VERSION_17"
+    },
+    {
+      "path": "android/build.gradle",
+      "before": "android {",
+      "after": "android {\n  buildFeatures { buildConfig true }"
+    },
+    {
+      "path": "lib/typescript/platforms/ios/extends.d.ts",
+      "before": "from '@vcloud-lux/hybrid-runtime'",
+      "after": "from '../../hybrid-runtime'"
+    },
+    {
+      "path": "lib/typescript/platforms/android/extends.d.ts",
+      "before": "from '@vcloud-lux/hybrid-runtime'",
+      "after": "from '../../hybrid-runtime'"
+    },
+    {
+      "path": "lib/typescript/hybrid-runtime.d.ts",
+      "contents": "// Declaration for NativeView bundled in RTC 1.3.2 (see vendor-patches/VolcEngineRTC-LICENSE.txt).\nexport declare class NativeView {\n  readonly viewId: string;\n  constructor(viewId: string);\n  static getView<T extends NativeView>(viewId: string, ctor: new (viewId: string) => T): T;\n}\n"
+    },
+    {
+      "path": "lib/commonjs/index.js",
+      "before": "var view = NativeView.getView(viewId, NativeSurfaceView);",
+      "after": "var view = viewId ? NativeView.getView(viewId, NativeSurfaceView) : null;"
+    },
+    {
+      "path": "lib/module/index.js",
+      "before": "var view = NativeView.getView(viewId, NativeSurfaceView);",
+      "after": "var view = viewId ? NativeView.getView(viewId, NativeSurfaceView) : null;"
+    }
+  ]
+}

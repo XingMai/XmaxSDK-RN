@@ -1,8 +1,8 @@
 # React Native 公开 API 标准
 
-2026-09-09。已确定的首版设计标准。当前基础工程仅实现 XmaxSDKInfo 并能供 Hello World 示例导入；下述实时/存储业务尚未实现。完整声明以 [public-api.d.ts](public-api.d.ts) 为唯一契约，本文解释语义。关键名称、参数业务名、状态原始值及职责对齐当前 iOS 源码。
+2026-09-09。已确定的首版设计标准。当前已实现摄像头实时 API、组件和尺寸计算；图片/存储/交互仍是后续设计。完整目标声明见 [public-api.d.ts](public-api.d.ts)，当前可调用范围见 [camera-implementation.md](camera-implementation.md) 和 src/index.ts 导出，本文解释目标语义。关键名称、参数业务名、状态原始值及职责对齐当前 iOS 源码。
 
-参考 iOS 工作区 `/Users/xmax.ai/dev/Xmax/iOS/XmaxSDK`，HEAD 为 `961fbb37472f9a59f85502ebcacb74d6f5e66caa`，包含未提交修改，不能把本次参考描述为该 commit 的纯净发布版本；文件指纹见 [ios-reference.json](ios-reference.json)。
+最初设计参考 iOS 工作区 `/Users/xmax.ai/dev/Xmax/iOS/XmaxSDK`，HEAD 为 `961fbb37472f9a59f85502ebcacb74d6f5e66caa`，包含未提交修改，不能把本次参考描述为该 commit 的纯净发布版本；文件指纹见 [ios-reference.json](ios-reference.json)。摄像头实施采用更新后的工作区快照，见 [camera-ios-reference.json](camera-ios-reference.json)。
 
 ## 1. 命名与语言适配
 
@@ -54,7 +54,7 @@ Client 只保存配置并创建 TS 服务，不启动 RTC、不申请权限、�
 
 RealtimeVideoTrack 保持稳定对象身份，videoFormat/position 是动态只读 getter；switchCamera 更新同一轨道元数据。React 显示层通过内部订阅更新，不能仅依赖对象引用变化触发重绘。流只能由对应 Manager 创建，不允许结构相同的对象冒充；内部记录 owner、来源和生命周期版本，不新增公开 kind 字段。
 
-首版不发送输入 SEI，但保留远端 SEI 任务确认。startGeneration 不以消息发送成功或任意远端首帧作为完成条件。无输入 SEI 时服务端仍能回传对应任务确认是联调准入条件，不能在未确认前静默放宽成功语义。
+首版不发送输入 SEI，但保留远端 SEI 任务确认。新任务的 startGeneration 不以消息发送成功或任意远端首帧作为完成条件。已有任务更新 context 使用同一 taskID 的 change_condition，按当前 iOS 语义发送成功即返回，不等待一条新的 SEI。无输入 SEI 时服务端仍能回传对应任务确认是联调准入条件，不能在未确认前静默放宽成功语义。
 
 ## 4. 监听和错误
 
@@ -66,7 +66,7 @@ setStateListener 注册时交付 currentState，再交付有序状态变化；�
 
 ## 5. React 视频组件
 
-XmaxVideo 使用 track；XmaxRealtimeVideo 使用 localTrack/remoteTrack。两者都有 videoContentMode（默认 fill）、isInteractionEnabled（默认 true）及 RN ViewProps/style。对应 iOS SwiftUI 名称，不额外导出 UIKit 的 XmaxVideoView/XmaxRealtimeVideoView 别名。
+目标交互属性尚未在摄像头阶段导出。XmaxVideo 使用 track；XmaxRealtimeVideo 使用 localTrack/remoteTrack。两者都有 videoContentMode（默认 fill）、isInteractionEnabled（默认 true）及 RN ViewProps/style。对应 iOS SwiftUI 名称，不额外导出 UIKit 的 XmaxVideoView/XmaxRealtimeVideoView 别名。
 
 内部用厂商 NativeViewComponent 渲染 RTC、RN Image 显示图片本地预览；控制层负责绑定及内置轨迹。无轨道时黑底；远端层确实可显示后 0.3 秒淡入，解绑恢复本地预览。不能把 NativeViewComponent.onLoad 当首帧，也不能用同一房间历史 decoded 首帧确认新绑定。
 
@@ -118,10 +118,9 @@ await realtime.setStateListener(state => {
 });
 const localStream = await realtime.createLocalCameraStream({ position: CameraPosition.front });
 setLocalTrack(localStream.videoTrack);
-const remoteStream = await realtime.startGeneration({
-  localStream, context: { prompt: '油画风格' },
-});
-setRemoteTrack(remoteStream.videoTrack);
+const remoteStream = await realtime.connect({ localStream });
+setRemoteTrack(remoteStream.videoTrack); // 提前挂载远端视图，接收本次真实 rendered 首帧
+await realtime.startGeneration({ context: { prompt: '油画风格' } });
 await realtime.startGeneration({ context: { prompt: '水彩风格' } }); // void
 // <XmaxRealtimeVideo localTrack={localTrack} remoteTrack={remoteTrack} style={{flex: 1}} />
 await realtime.disconnect(); // 保留预览

@@ -1,0 +1,4 @@
+{
+  "extends": "../tsconfig.json",
+  "include": ["camera-api.ts"]
+}

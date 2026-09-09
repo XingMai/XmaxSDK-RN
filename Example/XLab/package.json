@@ -8,6 +8,7 @@
     "android": "react-native run-android"
   },
   "dependencies": {
+    "@volcengine/react-native-rtc": "1.3.2",
     "@xmax/react-native-sdk": "file:../..",
     "react": "19.2.3",
     "react-native": "0.87.1",

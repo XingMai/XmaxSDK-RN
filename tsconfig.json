@@ -7,7 +7,22 @@
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "skipLibCheck": false,
-    "noEmit": true
+    "noEmit": true,
+    "lib": [
+      "ES2022"
+    ],
+    "types": [
+      "react",
+      "react-native"
+    ],
+    "customConditions": [
+      "react-native",
+      "react-native-legacy-deep-imports"
+    ],
+    "jsx": "react-jsx"
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx"
+  ]
 }

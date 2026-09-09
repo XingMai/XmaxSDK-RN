@@ -30,7 +30,7 @@ React 页面 → XmaxVideo / XmaxRealtimeVideo → RenderController → RTC 原�
 
 ## 2. 目录和所有权
 
-以下是实施时的目标结构；当前已落地 npm workspace、SDK 构建入口和 Example/XLab Hello World；下面的业务目录在对应实现开始时创建，不填入无功能占位类。
+以下是实施时的目标结构；当前已落地摄像头所需的 Core、Service、Media/Camera、Stream、Render 与 Foundation，Example/XLab 接入首页和自由提示词摄像头页；图片/存储/轨迹目录仍按后续实际实现创建。
 
 ```text
 XmaxSDK/
@@ -123,3 +123,7 @@ Controller 更新状态后再交付监听器。内部事件带 manager/operation
 依赖版本、构建环境、发布条件统一维护在 [engineering-baseline.md](engineering-baseline.md)，能力证据参照 [vendor-rn-audit.md](vendor-rn-audit.md)。
 
 当前阶段 Expo 工程、config plugin 和专门版本验收全部延后。同一 RN SDK 保留后续接入可能，不另写 Expo 业务层。
+
+## 摄像头阶段实现
+
+当前范围、iOS 源码快照、厂商修补与验证边界见 [camera-implementation.md](camera-implementation.md)。原生仅实现权限、owner 租约、后台销毁和 runtime 信息；生成协议与 HTTP 仍在 TypeScript。

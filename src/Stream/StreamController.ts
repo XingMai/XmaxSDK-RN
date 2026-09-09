@@ -1,0 +1,62 @@
+import type { RtcManager, RemoteStream } from '../Foundation/RTC/RtcManager';
+import type {
+  RealtimeContext,
+  RealtimeVideoFormat,
+} from '../Service/Realtime/RealtimeTypes';
+import { waitFor } from '../Foundation/Runtime/Async';
+import { RoomController } from './Room/RoomController';
+import { invalid } from '../Foundation/Errors/XmaxError';
+import { matchesTaskSEI } from './Room/TaskConfirmation';
+export class StreamController {
+  constructor(
+    private readonly rtc: RtcManager,
+    readonly room: RoomController,
+  ) {}
+  async beginGeneration(
+    taskID: string,
+    format: RealtimeVideoFormat,
+    context: RealtimeContext,
+    signal: AbortSignal,
+  ): Promise<RemoteStream> {
+    const connection = this.room.connection;
+    if (!connection) throw invalid('Connect before starting generation');
+    return waitFor<RemoteStream>(
+      (resolve, reject) => {
+        const off = this.rtc.onEvent(event => {
+          if (event.type === 'error') {
+            reject(event.error);
+            return;
+          }
+          if (
+            event.type !== 'sei' ||
+            event.stream.roomID !== connection.roomID ||
+            (connection.botName && event.stream.userID !== connection.botName)
+          )
+            return;
+          // Exact task identity, optionally followed by the server's numeric frame index.
+          if (!matchesTaskSEI(taskID, event.message)) return;
+          resolve(event.stream);
+        });
+        try {
+          this.room.send('start', taskID, format, context);
+        } catch (error) {
+          reject(error);
+        }
+        return off;
+      },
+      signal,
+      30000,
+      'Generation confirmation',
+    );
+  }
+  updateGeneration(
+    taskID: string,
+    format: RealtimeVideoFormat,
+    context: RealtimeContext,
+  ): void {
+    this.room.send('change_condition', taskID, format, context);
+  }
+  stopGeneration(taskID: string): void {
+    if (this.room.connection) this.room.send('stop', taskID);
+  }
+}

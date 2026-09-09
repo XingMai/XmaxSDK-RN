@@ -1,6 +1,6 @@
 # XmaxSDK RN 工程约定
 
-先阅读 [工程标准](docs/engineering-baseline.md)、[架构](docs/architecture.md)、[API 契约](docs/public-api.d.ts) 和对应语义文档。当前已搭建 Hello World 基础工程，业务 SDK 尚未实现；不要把未实施、未构建或未真机验证的内容报告为已支持。
+先阅读 [工程标准](docs/engineering-baseline.md)、[架构](docs/architecture.md)、[API 契约](docs/public-api.d.ts) 和对应语义文档。当前已实现摄像头线路，实际验证和缺口见 docs/camera-implementation.md；不要把未实施、未构建或未真机验证的内容报告为已支持。
 
 - TypeScript 承担业务，Core/Service/Media/Stream/Render/Foundation 的职责与关键名称对齐 iOS。参考目录为 /Users/xmax.ai/dev/Xmax/iOS/XmaxSDK；该目录只作参考，不是运行时、编译或发布依赖。
 - 关键 API 使用 iOS 原名和返回语义。保留 currentState、sessionID、taskID、fileURL、progress、set*Listener、stopLocalCameraStream、stopLocalImageStream。不得恢复旧草案的 addListener/getState/getAudioVolumes/stopLocalStream/dispose/XmaxMediaService。

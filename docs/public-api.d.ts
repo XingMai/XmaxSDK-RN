@@ -1,4 +1,4 @@
-/** RN 首版设计契约，2026-09-09。仅声明，尚无 SDK 实现。 */
+/** RN 首版设计契约，2026-09-09。完整目标声明；摄像头子集已实现，当前导出见 src/index.ts 与 camera-implementation.md。 */
 import type { ReactElement } from 'react';
 import type { ViewProps } from 'react-native';
 

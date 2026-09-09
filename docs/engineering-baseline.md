@@ -1,6 +1,6 @@
 # React Native 工程标准
 
-2026-09-09。以下是本次确定的实施和发布验收标准，替换早期“包装现有原生 XmaxSDK”和“完整 Swift/Kotlin 重写”草案。当前先完成 Hello World 基础工程，Expo 集成暂缓，厂商 RTC/COS 尚未安装；下面厂商依赖和业务测试是后续标准。版本已按源码/发布包核对；已验证兼容范围目前为空，厂商模块仅完成 RN 0.87.1 Codegen 检查，不能把目标表写成构建/真机已通过。
+2026-09-10。工程目标与发布验收标准。当前已实现摄像头线路的 TS 业务和必要原生适配，安装火山 RTC；COS、图片与轨迹尚未实施。iOS arm64 Debug/Release 已编译通过，真机媒体与最低系统仍未验收。每项实际结果见 [camera-implementation.md](camera-implementation.md)，不能把目标版本表直接当作支持承诺。
 
 ## 1. 产品与架构
 
@@ -62,7 +62,7 @@ SDK 不要求消费者手改 node_modules。开发期补丁可固定在 vendor-p
 
 ## 5. 当前发布包与后续扩展
 
-Hello World 阶段只导出已实现的 XmaxSDKInfo；设计契约中的业务方法不提供空实现。输出 lib/module、lib/commonjs、lib/typescript，Example 从 SDK 包名导入。根包 private=true，暂不发布到 npm。发布前再增加有实现的原生代码、许可证、依赖和安装验证。
+当前导出 XmaxClient、摄像头实时协议、视频组件及 MediaServicing 尺寸计算；图片、存储和交互设计不提供空实现。输出 lib/module、lib/commonjs、lib/typescript，Example 从 SDK 包名导入。根包 private=true，暂不发布到 npm。发布前完成厂商修订包、许可证、干净宿主安装和真机验收。
 
 Expo 暂不创建独立宿主或 config plugin；后续如果原生配置需要自动生成再增加。当前工程不依赖 Expo。
 
@@ -79,6 +79,8 @@ Expo 暂不创建独立宿主或 config plugin；后续如果原生配置需要�
 
 仓库规范：默认不提交密钥、node_modules、生成的 Codegen/编译输出；依赖和 lock 一起变更；TS 报错使用 unknown 收窄，不用 any/ts-ignore 绕过厂商类型问题。业务错误和日志统一走 Foundation。每次增删公共 API 更新契约和映射，版本支持范围只在验收后扩大。
 
-本机现有 Node 26.3.1 符合 RN 0.87.1 engines，本轮可使用；团队推荐的 .nvmrc 固定 22.13.0。尚未验证的机器组合不标为已通过。
+本机现有 Node 26.3.1 符合 RN 0.87.1 engines，本轮用于构建和测试；团队推荐的 .nvmrc 固定 22.13.0。尚未验证的机器组合不标为已通过。
 
 Hello World 构建实测结果及 XLab 依赖声明检查例外见 [bootstrap-verification.md](bootstrap-verification.md)。当前 SDK 源码依然保留 skipLibCheck=false。
+
+摄像头阶段 SDK 保留 skipLibCheck=false，使用 RN 官方提供的 react-native-legacy-deep-imports 类型条件，详见当前实现记录；这只选择声明文件，不关闭新架构。
