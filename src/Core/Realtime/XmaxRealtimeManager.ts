@@ -76,7 +76,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   ) {
     this.options = Object.freeze({ ...options });
     this.logger = new XmaxLogger(config.loggerOptions);
-    this.rtc = new RtcManager(this.logger);
+    this.rtc = new RtcManager();
     this.render = new RenderController(this, this.rtc);
     this.media = new MediaController(this.rtc, this.render, options.model);
 

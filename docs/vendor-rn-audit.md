@@ -2,7 +2,7 @@
 
 日期：2026-09-09。核对对象是“TypeScript 实现 Xmax 业务，调用厂商 RN SDK”的路线。首版不包含插帧、createLocalVideoStream。这是历史能力核对记录；当前确定的工程标准以 engineering-baseline.md、architecture.md 和 public-api.d.ts 为准。
 
-后续范围调整：用户已明确 RN 首版不主动发送 SEI，因此下文“输入逐帧 SEI 对齐”不再是首版准入条件；接收服务端 SEI 用于任务确认是独立能力，保留，服务端在无输入 SEI 时的返回行为仍需联调。图片线路现已确定使用 setDummyCaptureImagePath；外部帧输入不属于首版实现。发布包两端的平台专属声明均有 pushExternalVideoFrame，但顶层跨平台 RTCVideo API 未暴露可直接从 TS 构造并推送像素帧的完整链路，不能把声明存在视为已可用。
+后续范围调整：用户已明确 RN 首版不主动发送 SEI，因此下文“输入逐帧 SEI 对齐”不再是首版准入条件；接收服务端 SEI 用于任务确认是独立能力，保留，服务端在无输入 SEI 时的返回行为仍需联调。图片线路现已改为 iOS / Android 原生外部帧输入，具体实现见 image-implementation.md；下文静态图片接口为初始依赖核对记录。发布包两端的平台专属声明均有 pushExternalVideoFrame，但顶层跨平台 RTCVideo API 未暴露可直接从 TS 构造并推送像素帧的完整链路，不能把声明存在视为已可用。
 
 接入目标补充：普通 RN 与 Expo 自定义 development/production build 均可作为支持目标，具体 RN/Expo 版本需分别验证；Expo Go 不包含火山/COS 原生模块，不能运行本 SDK。TypeScript 编写业务不消除厂商原生依赖。Expo CNG 接入应提供 config plugin 管理原生工程配置，见 [Expo 自定义原生代码说明](https://docs.expo.dev/workflow/customizing/)。
 

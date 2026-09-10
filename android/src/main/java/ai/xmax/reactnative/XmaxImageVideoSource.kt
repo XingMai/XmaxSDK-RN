@@ -81,7 +81,8 @@ internal class XmaxImageVideoSource(private val gate: Any, private val directory
               .setReleaseCallback { pixels.capacity() }
               .build()
             try {
-              check(engine.pushExternalVideoFrame(frame) == 0) { "Unable to push image frame" }
+              // A rejected frame does not prevent startup or the next scheduled push.
+              engine.pushExternalVideoFrame(frame)
             } finally {
               frame.release()
             }

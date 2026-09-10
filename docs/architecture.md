@@ -89,7 +89,7 @@ XmaxSDK/
 
 TS 负责公开 API、HTTP、session 心跳、房间 JSON、任务确认、错误、配置、存储业务、模型尺寸规则和 UI。媒体采集、编码、传输、解码、视频显示由厂商原生 SDK 执行；不把像素/PCM/Base64 放进 JS 事件或每帧跨边界。
 
-图片线路由 ImageController 统一方向、输出尺寸及本地预览。Android 使用 XmaxImageVideoSource 将准备图片解码一次，以原始宽高、零旋转、递增时间戳提交外部视频帧，像素不跨 JS；RN iOS 保留 setDummyCaptureImagePath。Render 继续使用 RN Image。Android 关闭时先停止原生送帧，再销毁 RTC；iOS 清空 dummy 路径后销毁引擎。最后删除准备图片。
+图片线路由 ImageController 统一方向、输出尺寸及本地预览。iOS / Android 使用 XmaxImageVideoSource 将准备图片解码一次，以准备后的宽高、零旋转、递增时间戳提交外部视频帧，像素不跨 JS。Render 继续使用 RN Image。双端关闭时先停止原生送帧，再销毁 RTC，最后删除准备图片。
 
 首版不主动发送 SEI；接收服务端 SEI 并匹配 taskID/roomID/bot 仍保留。RTCRoom 消息和 HTTP session 均按 iOS schema，10 秒双重心跳独立；TS timer 用于前台，不承诺后台维持。包内不引入插帧和文件视频输入。
 
@@ -131,3 +131,9 @@ Controller 更新状态后再交付监听器。内部事件带 manager/operation
 ## 存储阶段实现
 
 XmaxClient → 内部 XmaxStorageManager → StorageService → Foundation StorageManager。STS 与安全检测复用 ApiService；COS 上传、原生下载和文件操作封装在 Foundation，XLab 负责系统选择器、预览、缓存文件与页面取消。存储任务独立于 RTC 生命周期。具体依赖、取消语义与验收边界见 [storage-implementation.md](storage-implementation.md)。
+
+### iOS 原生实现
+
+`XmaxRuntime.mm` 只承担 RN Codegen / TurboModule 的 Objective-C++ 适配。`XmaxRuntimeImplementation.swift` 管权限、原生 owner 和后台释放，`XmaxImageManager.swift` 管图片准备及缓存所有权，`XmaxImageVideoSource.swift` 管固定格式的持续推帧。原生实现使用 Swift 6；HTTP、房间和生成业务保持在 TypeScript。
+
+TurboModule 可能由 Codegen provider 在 JS 线程创建，不能依赖 `requiresMainQueueSetup` 保证构造线程。Swift Runtime 构造只使用线程无关的系统信息；`prepareRuntime` 异步读取主线程的 UIKit 状态，RtcManager.open 将该等待纳入创建操作，再申请原生 owner。关闭或取消后不再申请租约或创建引擎。

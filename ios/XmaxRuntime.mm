@@ -1,111 +1,109 @@
 #import "XmaxRuntime.h"
-#import "XmaxImageManager.h"
-#import <AVFoundation/AVFoundation.h>
-#import <UIKit/UIKit.h>
-#import <VolcEngineRTC/VolcEngineRTC.h>
+#import "XmaxReactNativeSDK-Swift.h"
 #import <React/RCTInvalidating.h>
-#import <sys/utsname.h>
 
+/** Adapts RN Codegen methods to the Swift native runtime implementation. */
 @interface XmaxRuntime () <RCTInvalidating>
-@property(nonatomic) XmaxImageManager *images;
-@property(nonatomic, copy) NSString *owner;
-@property(nonatomic) BOOL active;
-@property(nonatomic) BOOL foreground;
+@property(nonatomic, strong) XmaxRuntimeImplementation *implementation;
 @end
 
 @implementation XmaxRuntime
 RCT_EXPORT_MODULE(XmaxRuntime)
-+ (BOOL)requiresMainQueueSetup { return YES; }
-- (dispatch_queue_t)methodQueue { return dispatch_get_main_queue(); }
+
++ (BOOL)requiresMainQueueSetup {
+  return NO;
+}
+
+- (dispatch_queue_t)methodQueue {
+  return dispatch_get_main_queue();
+}
+
 - (instancetype)init {
   if ((self = [super init])) {
-    self.images = [XmaxImageManager new];
-    self.foreground = UIApplication.sharedApplication.applicationState != UIApplicationStateBackground;
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(background:) name:UIApplicationDidEnterBackgroundNotification object:nil];
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(foreground:) name:UIApplicationWillEnterForegroundNotification object:nil];
+    self.implementation = [XmaxRuntimeImplementation new];
   }
+
   return self;
 }
-- (void)background:(NSNotification *)notification {
-  @synchronized(self) {
-    self.foreground = NO;
-    if (self.owner && self.active) {
-      self.active = NO;
-      [ByteRTCVideo destroyRTCVideo];
-    }
-  }
-}
-- (void)foreground:(NSNotification *)notification {
-  @synchronized(self) { self.foreground = YES; }
-}
+
 - (void)invalidate {
-  [[NSNotificationCenter defaultCenter] removeObserver:self];
-  @synchronized(self) {
-    if (self.owner && self.active) [ByteRTCVideo destroyRTCVideo];
-    self.active = NO;
-    self.owner = nil;
-  }
-  [self.images invalidate];
+  [self.implementation invalidate];
 }
+
+- (void)prepareRuntime:(RCTPromiseResolveBlock)resolve
+                reject:(RCTPromiseRejectBlock)reject {
+  [self.implementation prepareRuntime:resolve reject:reject];
+}
+
 - (NSNumber *)acquire:(NSString *)owner {
-  @synchronized(self) {
-    if (self.owner || !self.foreground) return @NO;
-    self.owner = owner;
-    self.active = YES;
-    return @YES;
-  }
+  return [self.implementation acquire:owner];
 }
+
 - (NSNumber *)isActive:(NSString *)owner {
-  @synchronized(self) { return @([self.owner isEqualToString:owner] && self.active); }
+  return [self.implementation isActive:owner];
 }
+
 - (void)release:(NSString *)owner {
-  @synchronized(self) {
-    if (![self.owner isEqualToString:owner]) return;
-    // Normal close destroys the vendor engine first; background already destroyed it.
-    self.active = NO;
-    self.owner = nil;
-  }
+  [self.implementation release:owner];
 }
-- (NSString *)randomUUID { return NSUUID.UUID.UUIDString; }
+
+- (NSString *)randomUUID {
+  return [self.implementation randomUUID];
+}
+
 - (NSString *)runtimeInfo {
-  struct utsname info; uname(&info);
-  NSDictionary *value = @{ @"platform": @"ios", @"os_version": UIDevice.currentDevice.systemVersion, @"device_model": @(info.machine) };
-  return [[NSString alloc] initWithData:[NSJSONSerialization dataWithJSONObject:value options:0 error:nil] encoding:NSUTF8StringEncoding];
-}
-- (void)requestPermissions:(BOOL)useMicrophone resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
-  void (^cameraDone)(BOOL) = ^(BOOL granted) {
-    if (!granted) { resolve(@"camera"); return; }
-    if (!useMicrophone) { resolve(@"granted"); return; }
-    AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
-    if (status == AVAuthorizationStatusNotDetermined) {
-      [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio completionHandler:^(BOOL allowed) { resolve(allowed ? @"granted" : @"microphone"); }];
-    } else resolve(status == AVAuthorizationStatusAuthorized ? @"granted" : @"microphone");
-  };
-  AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
-  if (status == AVAuthorizationStatusNotDetermined) [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:cameraDone];
-  else cameraDone(status == AVAuthorizationStatusAuthorized);
-}
-- (void)imageInfo:(NSString *)fileURL resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
-  [self.images info:fileURL resolve:resolve reject:reject];
+  return [self.implementation runtimeInfo];
 }
 
-- (void)prepareImage:(NSString *)fileURL width:(double)width height:(double)height resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
-  [self.images prepare:fileURL width:width height:height resolve:resolve reject:reject];
+- (void)requestPermissions:(BOOL)useMicrophone
+                   resolve:(RCTPromiseResolveBlock)resolve
+                    reject:(RCTPromiseRejectBlock)reject {
+  [self.implementation requestPermissions:useMicrophone resolve:resolve reject:reject];
 }
 
-- (void)removePreparedImage:(NSString *)fileURL resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
-  [self.images remove:fileURL resolve:resolve reject:reject];
+- (void)imageInfo:(NSString *)fileURL
+          resolve:(RCTPromiseResolveBlock)resolve
+           reject:(RCTPromiseRejectBlock)reject {
+  [self.implementation imageInfo:fileURL resolve:resolve reject:reject];
 }
 
-- (void)startImageVideo:(NSString *)owner path:(NSString *)path width:(double)width height:(double)height fps:(double)fps resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
-  reject(@"MEDIA_ERROR", @"Native image video source is Android-only", nil);
+- (void)prepareImage:(NSString *)fileURL
+               width:(double)width
+              height:(double)height
+             resolve:(RCTPromiseResolveBlock)resolve
+              reject:(RCTPromiseRejectBlock)reject {
+  [self.implementation prepareImage:fileURL width:width height:height resolve:resolve reject:reject];
+}
+
+- (void)removePreparedImage:(NSString *)fileURL
+                    resolve:(RCTPromiseResolveBlock)resolve
+                     reject:(RCTPromiseRejectBlock)reject {
+  [self.implementation removePreparedImage:fileURL resolve:resolve reject:reject];
+}
+
+- (void)startImageVideo:(NSString *)owner
+                   path:(NSString *)path
+                  width:(double)width
+                 height:(double)height
+                    fps:(double)fps
+                resolve:(RCTPromiseResolveBlock)resolve
+                 reject:(RCTPromiseRejectBlock)reject {
+  [self.implementation startImageVideo:owner
+                                 path:path
+                                width:width
+                               height:height
+                                  fps:fps
+                              resolve:resolve
+                               reject:reject];
 }
 
 - (void)stopImageVideo:(NSString *)owner {
-  // iOS keeps its existing RTC static-image source.
+  [self.implementation stopImageVideo:owner];
 }
 
-- (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:(const facebook::react::ObjCTurboModule::InitParams &)params {
+- (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
+    (const facebook::react::ObjCTurboModule::InitParams &)params {
   return std::make_shared<facebook::react::NativeXmaxRuntimeSpecJSI>(params);
 }
+
 @end

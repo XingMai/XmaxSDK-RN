@@ -26,6 +26,7 @@ class XmaxRuntime(private val context: ReactApplicationContext) : NativeXmaxRunt
   private var active = false
   init { app.registerActivityLifecycleCallbacks(this) }
   override fun getName() = NAME
+  override fun prepareRuntime(promise: Promise) { promise.resolve(null) }
   @Synchronized override fun acquire(token: String): Boolean {
     if (owner != null || started == 0) return false
     owner = token; active = true; return true

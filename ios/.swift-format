@@ -1,0 +1,12 @@
+{
+  "indentation": { "spaces": 2 },
+  "lineLength": 100,
+  "maximumBlankLines": 1,
+  "respectsExistingLineBreaks": true,
+  "lineBreakBeforeEachArgument": true,
+  "lineBreakBetweenDeclarationAttributes": true,
+  "rules": {
+    "AllPublicDeclarationsHaveDocumentation": true,
+    "UseTripleSlashForDocumentationComments": true
+  }
+}

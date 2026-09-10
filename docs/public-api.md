@@ -37,7 +37,7 @@ Client 只保存配置并创建 TS 服务，不启动 RTC、不申请权限、�
 | 调用 | 行为 / 返回值 |
 | --- | --- |
 | `createLocalCameraStream({videoFormat?, position?, useMicrophone?})` | 开始本地相机预览，返回本地流；默认 front、false、模型默认规格 |
-| `createLocalImageStream({fileURL, videoFormat?})` | 文件准备、规格解析和图片预览就绪后返回本地流；Android 由原生固定尺寸帧、iOS 由 dummy capture 持续推流 |
+| `createLocalImageStream({fileURL, videoFormat?})` | 文件准备、规格解析和图片预览就绪后返回本地流；iOS / Android 均由原生固定尺寸外部帧按 videoFormat.fps 持续推流 |
 | `stopLocalCameraStream()` / `stopLocalImageStream()` | 已断开时停止匹配类型的本地输入；没有对应类型时无操作；在线时先 disconnect |
 | `connect({localStream})` | 创建 session、入房、发布输入，返回远端流；不自动开始生成 |
 | `startGeneration({localStream, context?})` | 按需连接，开始/更新生成，返回远端流 |

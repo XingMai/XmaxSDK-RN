@@ -6,6 +6,7 @@ const nativeCalls = [];
 const nativeRuntime = {
   runtimeInfo: () => JSON.stringify({ platform: platform.OS }),
   randomUUID: () => 'fixture-owner', acquire: () => true, isActive: () => true,
+  async prepareRuntime() {},
   release() {},
   async startImageVideo(...args) { nativeCalls.push(['start', ...args]); },
   stopImageVideo(owner) { nativeCalls.push(['stop', owner]); },
@@ -36,7 +37,10 @@ mock.module('@volcengine/react-native-rtc', {
         const room = {
           setRTCRoomEventHandler(handler) { this.handler = handler; },
           joinRoom() { this.handler.onRoomStateChanged('room', 'user', 0); },
+          publishStreamAudio() {},
           publishStreamVideo() {},
+          leaveRoom() {},
+          destroy() {},
         };
         const engine = {
           calls,
@@ -61,54 +65,37 @@ mock.module('@volcengine/react-native-rtc', {
 const { RtcManager } = require('../lib/commonjs/Foundation/RTC/RtcManager');
 
 test('Android bypasses dummy capture and preserves portrait, landscape and square image dimensions', async () => {
-  for (const [width, height] of [
-    [736, 1664, orientation.PORTRAIT],
-    [1664, 736, orientation.LANDSCAPE],
-    [832, 832, orientation.PORTRAIT],
+  for (const [width, height, fps] of [
+    [736, 1664, 24],
+    [1664, 736, 30],
+    [832, 832, 15],
   ]) {
     const rtc = new RtcManager();
     await rtc.open(new AbortController().signal);
-    const format = { width, height, fps: 24 };
-    rtc.configureImageSource(format);
+    const format = { width, height, fps };
+    rtc.configureImageSource();
     await rtc.configureEncoding(format, 500, 1000);
     await rtc.startImage('/private-image.jpg', format);
     assert.deepEqual(engines.at(-1).calls, [
       ['stopCapture'], ['source', 0, 1], ['encoder', width, height],
     ]);
-    assert.deepEqual(nativeCalls.at(-1), ['start', 'fixture-owner', '/private-image.jpg', width, height, 24]);
+    assert.deepEqual(nativeCalls.at(-1), ['start', 'fixture-owner', '/private-image.jpg', width, height, fps]);
     await rtc.close();
+    assert.equal(engines.at(-1).calls.some(([event]) => event === 'image'), false);
     assert.deepEqual(nativeCalls.slice(-2), [['stop', 'fixture-owner'], ['destroy']]);
   }
 });
 
-test('actual outgoing dimensions are logged once per size and orientation cannot change after join', async () => {
-  const logs = [];
-  const rtc = new RtcManager({
-    businessEnabled: true,
-    business: (event, data) => logs.push([event, data]),
-  });
+test('the image source cannot change after joining a room', async () => {
+  const rtc = new RtcManager();
   const signal = new AbortController().signal;
   await rtc.open(signal);
   await rtc.join({ roomID: 'room', userID: 'user', token: 'fixture', botName: null }, false, signal);
-  assert.throws(() => rtc.configureImageSource({ width: 736, height: 1664, fps: 24 }), {
+  assert.throws(() => rtc.configureImageSource(), {
     code: 'INVALID_CONFIGURATION',
   });
-  const handler = engines.at(-1).room.handler;
-  const stats = (width, height, isScreen = false) => ({
-    isScreen,
-    videoStats: { encodedFrameWidth: width, encodedFrameHeight: height },
-  });
-  handler.onLocalStreamStats(stats(0, 0));
-  handler.onLocalStreamStats(stats(1664, 736));
-  handler.onLocalStreamStats(stats(1664, 736));
-  handler.onLocalStreamStats(stats(736, 1664, true));
-  handler.onLocalStreamStats(stats(736, 1664));
-  assert.deepEqual(logs, [
-    ['Local video encoded dimensions', { width: 1664, height: 736 }],
-    ['Local video encoded dimensions', { width: 736, height: 1664 }],
-  ]);
+  await rtc.close();
 });
-
 
 test('a native image start completing after close cannot become active', async t => {
   let finish;
@@ -116,21 +103,67 @@ test('a native image start completing after close cannot become active', async t
   const rtc = new RtcManager();
   await rtc.open(new AbortController().signal);
   const format = { width: 736, height: 1664, fps: 24 };
-  rtc.configureImageSource(format);
+  rtc.configureImageSource();
   const starting = rtc.startImage('/private-image.jpg', format);
   await rtc.close();
   finish();
   await assert.rejects(starting, { code: 'CANCELLED' });
 });
 
-test('iOS keeps the existing dummy source and image orientation', async () => {
+test('iOS submits full native frames at the requested fps and stops them before destruction', async () => {
   platform.OS = 'ios';
   try {
+    for (const [width, height, fps] of [[736, 1664, 24], [1664, 736, 30], [832, 832, 15]]) {
+      const rtc = new RtcManager();
+      await rtc.open(new AbortController().signal);
+      const format = { width, height, fps };
+      rtc.configureImageSource();
+      await rtc.configureEncoding(format, 500, 1000);
+      await rtc.startImage('/private-image.jpg', format);
+      assert.deepEqual(engines.at(-1).calls, [
+        ['stopCapture'], ['source', 0, 1], ['encoder', width, height],
+      ]);
+      assert.deepEqual(nativeCalls.at(-1), ['start', 'fixture-owner', '/private-image.jpg', width, height, fps]);
+      await rtc.close();
+      assert.equal(engines.at(-1).calls.some(([event]) => event === 'image'), false);
+      assert.deepEqual(nativeCalls.slice(-2), [['stop', 'fixture-owner'], ['destroy']]);
+    }
+  } finally { platform.OS = 'android'; }
+});
+
+test('iOS waits for main-thread preparation and close cancels pending initialization', async t => {
+  platform.OS = 'ios';
+  let finish;
+  t.mock.method(nativeRuntime, 'prepareRuntime', () => new Promise(resolve => { finish = resolve; }));
+  const acquire = t.mock.method(nativeRuntime, 'acquire');
+  const initialEngineCount = engines.length;
+  try {
     const rtc = new RtcManager();
-    await rtc.open(new AbortController().signal);
-    const format = { width: 736, height: 1664, fps: 24 };
-    rtc.configureImageSource(format);
-    await rtc.startImage('/private-image.jpg', format);
-    assert.deepEqual(engines.at(-1).calls, [['orientation', 1], ['image'], ['stopCapture']]);
+    const opening = rtc.open(new AbortController().signal);
+    const rejected = assert.rejects(opening, { code: 'CANCELLED' });
+    assert.equal(acquire.mock.callCount(), 0);
+    await assert.rejects(rtc.open(new AbortController().signal), { code: 'INVALID_CONFIGURATION' });
+    const closing = rtc.close();
+    finish();
+    await rejected;
+    await closing;
+    assert.equal(acquire.mock.callCount(), 0);
+    assert.equal(engines.length, initialEngineCount);
+  } finally { platform.OS = 'android'; }
+});
+
+test('iOS acquires the engine only after main-thread preparation completes', async t => {
+  platform.OS = 'ios';
+  let finish;
+  t.mock.method(nativeRuntime, 'prepareRuntime', () => new Promise(resolve => { finish = resolve; }));
+  const acquire = t.mock.method(nativeRuntime, 'acquire');
+  try {
+    const rtc = new RtcManager();
+    const opening = rtc.open(new AbortController().signal);
+    assert.equal(acquire.mock.callCount(), 0);
+    finish();
+    await opening;
+    assert.equal(acquire.mock.callCount(), 1);
+    await rtc.close();
   } finally { platform.OS = 'android'; }
 });

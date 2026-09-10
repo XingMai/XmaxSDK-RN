@@ -39,6 +39,8 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p Example/XLab/tsconfig.json",
     "lint": "eslint src Example/XLab/App.tsx Example/XLab/src Example/XLab/index.js",
     "format:check": "prettier --check src scripts Example/XLab/App.tsx Example/XLab/src",
+    "format:ios": "xcrun swift-format format --in-place --recursive ios",
+    "format:ios:check": "xcrun swift-format lint --strict --recursive ios",
     "prepack": "npm run build",
     "prepare": "node scripts/apply-vendor-patches.mjs",
     "test": "npm run build && tsc --noEmit -p tests/tsconfig.json && node --experimental-test-module-mocks --test tests/*.test.cjs"

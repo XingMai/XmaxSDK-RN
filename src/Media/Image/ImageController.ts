@@ -53,13 +53,6 @@ export class ImageController {
       };
 
       validateVideoFormat(format);
-      this.rtc.logger.business('Image input dimensions', {
-        sourceWidth: size.width,
-        sourceHeight: size.height,
-        preparedWidth: format.width,
-        preparedHeight: format.height,
-        fps: format.fps,
-      });
       prepared = await this.images.prepare(options.fileURL, format);
       ensureActive(signal);
       await this.rtc.open(signal);
@@ -67,7 +60,7 @@ export class ImageController {
 
       const bitrates = resolveBitrates(format);
 
-      this.rtc.configureImageSource(format);
+      this.rtc.configureImageSource();
       await this.rtc.configureEncoding(
         format,
         bitrates.minimum,

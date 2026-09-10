@@ -33,6 +33,19 @@ target 'XLab' do
       # :ccache_enabled => true
     )
 
+    # Some dependency resource bundles retain older deployment targets. Raise
+    # those targets to XLab's minimum without lowering any stricter requirement.
+    minimum_ios = Gem::Version.new(min_ios_version_supported)
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |configuration|
+        deployment_target = configuration.build_settings['IPHONEOS_DEPLOYMENT_TARGET']
+        next unless deployment_target&.match?(/\A\d+(\.\d+)*\z/)
+        next unless Gem::Version.new(deployment_target) < minimum_ios
+
+        configuration.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = minimum_ios.to_s
+      end
+    end
+
     # A reinstall can retain Release frameworks while removing their flavor
     # markers. Let RN's own build scripts restore the requested configuration.
     %w[React-Core-prebuilt ReactNativeDependencies hermes-engine].each do |pod|

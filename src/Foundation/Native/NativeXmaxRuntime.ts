@@ -16,7 +16,7 @@ export interface Spec extends TurboModule {
   /** Removes only files created by prepareImage. */
   removePreparedImage(fileURL: string): Promise<void>;
 
-  /** Android repeats a prepared image in native memory, without JS frame delivery. */
+  /** Repeats a prepared image in native memory, without JS frame delivery. */
   startImageVideo(
     owner: string,
     path: string,
@@ -25,8 +25,11 @@ export interface Spec extends TurboModule {
     fps: number,
   ): Promise<void>;
 
-  /** Stops Android frame delivery before destroying the owner's RTC engine. */
+  /** Stops native frame delivery before destroying the owner's RTC engine. */
   stopImageVideo(owner: string): void;
+
+  /** Reads platform UI state asynchronously before acquiring a media lease. */
+  prepareRuntime(): Promise<void>;
 
   acquire(owner: string): boolean;
 

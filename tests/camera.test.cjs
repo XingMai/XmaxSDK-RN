@@ -303,8 +303,7 @@ class FakeRtc {
   closed = false;
   joins = 0;
   closes = 0;
-  constructor(logger = { business() {} }) {
-    this.logger = logger;
+  constructor() {
     FakeRtc.instances.push(this);
   }
   randomUUID() {
@@ -328,7 +327,7 @@ class FakeRtc {
     this.camera = true;
   }
   configureEncoding() {}
-  configureImageSource(format) { this.imageSourceFormat = { ...format }; }
+  configureImageSource() { this.imageSourceConfigured = true; }
   switchCamera() {}
   async join() {
     this.joins++;
@@ -630,7 +629,7 @@ test('image pipeline uses prepared dimensions/path, no camera permissions, and c
   assert.deepEqual(local.videoTrack.videoFormat, { width: 1024, height: 768, fps: 24 });
   assert.equal(local.videoTrack.position, null);
   assert.equal(rtc.imagePath, '/cache/prepared image.jpg');
-  assert.deepEqual(rtc.imageSourceFormat, local.videoTrack.videoFormat);
+  assert.equal(rtc.imageSourceConfigured, true);
   assert.equal(rtc.permissionCalls, 0);
   assert.equal(rtc.camera, false);
   await manager.stopLocalCameraStream();
