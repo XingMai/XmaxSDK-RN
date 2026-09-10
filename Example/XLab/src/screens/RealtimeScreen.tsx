@@ -1,4 +1,3 @@
-import { useNavigation, usePreventRemove } from '@react-navigation/native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AppState,
@@ -34,8 +33,9 @@ import { RealtimeLoadingOverlay } from '../realtime/RealtimeLoadingOverlay';
 /**
  * Owns camera or image preview and its prompt/reference generation lifecycle.
  *
- * Closes the realtime manager on exit or backgrounding. Foreground recovery
+ * Closes the realtime manager on unmount or backgrounding. Foreground recovery
  * restores local preview without automatically restarting generation.
+ * Native back gestures remain uninterrupted; cancelling a swipe keeps preview alive.
  * The preview ends above the control panel; file input starts 68 points below
  * the top safe area, matching the UIKit XLab viewport.
  */
@@ -52,12 +52,10 @@ export function RealtimeScreen({
   fileURL?: string;
 }) {
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation();
   const manager = useRef<XmaxRealtimeManaging | null>(null),
     local = useRef<RealtimeMediaStream | null>(null);
   const alive = useRef(false),
-    epoch = useRef(0),
-    exiting = useRef(false);
+    epoch = useRef(0);
 
   const [localTrack, setLocalTrack] = useState<RealtimeVideoTrack | null>(null),
     [remoteTrack, setRemoteTrack] = useState<RealtimeVideoTrack | null>(null);
@@ -157,12 +155,14 @@ export function RealtimeScreen({
         closing = realtime.close().catch(showError);
       } else if (next === 'active' && previous === 'background') {
         void closing.then(() => {
-          if (alive.current && !exiting.current) return preview(realtime);
+          if (alive.current) return preview(realtime);
         });
       }
       if (next !== 'inactive') previous = next;
     });
 
+    // Release on unmount without cancelling and replaying the native back gesture.
+    // Invalidate pending work first so late results cannot restore the removed screen.
     return () => {
       alive.current = false;
       nextOperation();
@@ -174,21 +174,6 @@ export function RealtimeScreen({
       void realtime.close().catch(() => {});
     };
   }, [apiKey, environment, preview, showError, nextOperation]);
-
-  /** All navigation exits wait for release, including system back and swipe back. */
-  usePreventRemove(true, ({ data }) => {
-    if (exiting.current) return;
-
-    exiting.current = true;
-    nextOperation();
-    setBusy(true);
-    setLoading(false);
-    void (manager.current?.close() ?? Promise.resolve())
-      .catch(() => {})
-      .finally(() => {
-        if (alive.current) navigation.dispatch(data.action);
-      });
-  });
 
   /**
    * Mounts the remote track before starting or updating prompt/reference generation.
