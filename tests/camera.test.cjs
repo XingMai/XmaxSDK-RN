@@ -31,7 +31,7 @@ const {
 const runtime = {
   platform: 'ios',
   os_version: '26.6',
-  sdk_version: '0.0.1',
+  sdk_version: '1.0.0',
   device_model: 'fixture',
 };
 const defer = () => {

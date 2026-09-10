@@ -1,6 +1,6 @@
 {
   "name": "@xmax/react-native-sdk",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Xmax SDK for React Native",
   "license": "UNLICENSED",
   "private": true,
