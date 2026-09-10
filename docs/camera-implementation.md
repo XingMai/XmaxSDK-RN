@@ -11,7 +11,7 @@
 - Foundation：厂商适配、权限、统一错误、按 Client 配置过滤的业务状态 / 性能日志；不输出提示词、Key 或鉴权头。
 - 原生小模块：TurboModule / Codegen、相机权限、RTC owner 租约、进入后台 / runtime 销毁时直接销毁自有 RTC 引擎。HTTP 和生成控制没有复制到 Swift/Kotlin。
 
-参考 iOS 源码 HEAD 在快照时为 `f6b02899a867ebf9e2a2e1181317a20e4db78bbd`，工作区含后续修改。实施读取的文件指纹见 [camera-ios-reference.json](camera-ios-reference.json)。任务 ID 使用快照里的 `task-${base64urlUUID}?os=ios`，Android 使用 `os=android`；SEI 只接受完整 taskID 或追加 `&index=<数字>`，并匹配 room / bot，不接受删掉 OS 参数的 ID。
+参考 iOS 源码 HEAD 在快照时为 `f6b02899a867ebf9e2a2e1181317a20e4db78bbd`，工作区含后续修改。实施读取的文件指纹见 [camera-ios-reference.json](camera-ios-reference.json)。iOS 任务 ID 保持快照里的 `task-${base64urlUUID}?os=ios`。2026-09-10 按用户调试要求，Android 暂时去掉 `?os=android`，使用 `task-${base64urlUUID}`；发送的 start / change_condition / stop 和接收的 SEI 确认使用同一个无后缀 ID。SEI 只接受完整 taskID 或追加 `&index=<数字>`，并匹配 room / bot，不兼容旧的 Android OS 后缀。runtime.platform 仍为 android。
 
 本轮没有 createLocalImageStream、createStorageManager、轨迹交互 / isInteractionEnabled、COS、插帧、本地视频、Web 或 Expo 入口。这些仍在完整目标契约里，但不会导出无功能 API。当前导出以 `src/index.ts` 和构建生成的 `lib/typescript/index.d.ts` 为准；公开声明的正负调用覆盖在 `tests/camera-api.ts`。
 

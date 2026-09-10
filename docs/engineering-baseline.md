@@ -7,7 +7,7 @@
 - 单个 npm 包 `@xmax/react-native-sdk`（名称使用权发布前检查），仅 iOS/Android 手机端。
 - TypeScript 业务，Core/Service/Media/Stream/Render/Foundation 对齐 iOS，关键公开 API/内部职责命名一致；具体契约见 public-api.d.ts。
 - 基于火山 RTC RN、腾讯 COS RN，原生代码只补文件/权限、后台释放和必要的视图事件；不依赖 pod XmaxSDK 或 ai.xmax:xmax-sdk。
-- 相机、图片输入、生成、内置轨迹、存储图片/视频上传下载和尺寸计算保留。图片用 setDummyCaptureImagePath；不主动发送 SEI，保留接收生成确认。
+- 相机、图片输入、生成、内置轨迹、存储图片/视频上传下载和尺寸计算保留。Android 图片使用原生固定尺寸帧送入，RN iOS 暂用 setDummyCaptureImagePath；不主动发送 SEI，保留接收生成确认。
 - 不支持网页、Expo Go、旧 RN 架构、插帧、本地视频生成、逐帧 JS 输出和录制。
 
 ## 2. 验收版本矩阵

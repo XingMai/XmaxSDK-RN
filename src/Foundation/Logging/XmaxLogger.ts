@@ -8,9 +8,13 @@
 export class XmaxLogger {
   constructor(private readonly options: number) {}
 
+  /** Allows callers to skip diagnostic-only native property reads when disabled. */
+  get businessEnabled(): boolean {
+    return this.options === 1 || this.options === 3;
+  }
+
   business(event: string, metadata?: object): void {
-    if (this.options === 1 || this.options === 3)
-      console.info('[XmaxSDK]', event, metadata ?? '');
+    if (this.businessEnabled) console.info('[XmaxSDK]', event, metadata ?? '');
   }
 
   performance(metadata: object): void {

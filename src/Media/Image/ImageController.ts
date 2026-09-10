@@ -53,6 +53,13 @@ export class ImageController {
       };
 
       validateVideoFormat(format);
+      this.rtc.logger.business('Image input dimensions', {
+        sourceWidth: size.width,
+        sourceHeight: size.height,
+        preparedWidth: format.width,
+        preparedHeight: format.height,
+        fps: format.fps,
+      });
       prepared = await this.images.prepare(options.fileURL, format);
       ensureActive(signal);
       await this.rtc.open(signal);
@@ -60,6 +67,7 @@ export class ImageController {
 
       const bitrates = resolveBitrates(format);
 
+      this.rtc.configureImageSource(format);
       await this.rtc.configureEncoding(
         format,
         bitrates.minimum,
@@ -67,7 +75,10 @@ export class ImageController {
       );
       ensureActive(signal);
       // RN's URL.pathname only parses HTTP URLs; native preparation returns a file URL.
-      this.rtc.startImage(decodeURIComponent(prepared.slice('file://'.length)));
+      await this.rtc.startImage(
+        decodeURIComponent(prepared.slice('file://'.length)),
+        format,
+      );
       ensureActive(signal);
       this.stream = this.render.create(true, format, null, null, prepared);
       this.fileURL = prepared;

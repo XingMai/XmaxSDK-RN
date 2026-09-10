@@ -8,9 +8,12 @@ import {
   ChannelProfile,
   VideoCaptureConfig,
   VideoEncoderConfig,
+  VideoOrientation,
+  VideoSourceType,
   type IEngine,
   type IRoom,
   type RemoteStreamKey,
+  type VideoFrameInfo,
 } from '@volcengine/react-native-rtc';
 import NativeRuntime from '../Native/NativeXmaxRuntime';
 import {
@@ -31,6 +34,7 @@ import {
 } from '../../Service/Realtime/RealtimeTypes';
 import type { RealtimeSessionConnection } from '../../Service/Realtime/RealtimeSessionService';
 import type { RuntimeInfo } from '../Runtime/RuntimeInfo';
+import { XmaxLogger } from '../Logging/XmaxLogger';
 
 /**
  * The room and user identity of a remote RTC stream.
@@ -94,7 +98,7 @@ export class RtcManager {
   private readonly views = new Map<string, string>();
   readonly runtime: RuntimeInfo;
 
-  constructor() {
+  constructor(readonly logger = new XmaxLogger(0)) {
     this.runtime = {
       ...(JSON.parse(NativeRuntime.runtimeInfo()) as Omit<
         RuntimeInfo,
@@ -188,13 +192,45 @@ export class RtcManager {
         if (this.owner === owner && this.active) this.emit(event);
       };
 
+      // Diagnostic getters must never interrupt native frame delivery.
+      const logFrame = (event: string, info: VideoFrameInfo) => {
+        if (
+          this.owner !== owner ||
+          !this.active ||
+          !this.logger.businessEnabled
+        )
+          return;
+
+        let rotation: number | null = null;
+
+        try {
+          rotation = info.rotation;
+        } catch {
+          // Some vendor enum values may not be understood by the RN bridge.
+        }
+
+        this.logger.business(event, {
+          width: info.width,
+          height: info.height,
+          rotation,
+        });
+      };
+
       check(
         engine.setRtcVideoEventHandler({
-          onFirstLocalVideoFrameCaptured: index => {
+          onFirstLocalVideoFrameCaptured: (index, info) => {
+            if (index === StreamIndex.STREAM_INDEX_MAIN)
+              logFrame('Local frame captured', info);
             if (index === StreamIndex.STREAM_INDEX_MAIN)
               emit({ type: 'localFrame' });
           },
+          onLocalVideoSizeChanged: (index, info) => {
+            if (index === StreamIndex.STREAM_INDEX_MAIN)
+              logFrame('Local source size changed', info);
+          },
           onFirstRemoteVideoFrameDecoded: (key, info) => {
+            if (key.streamIndex === StreamIndex.STREAM_INDEX_MAIN)
+              logFrame('Remote frame decoded', info);
             if (key.streamIndex === StreamIndex.STREAM_INDEX_MAIN)
               emit({
                 type: 'decoded',
@@ -205,12 +241,18 @@ export class RtcManager {
           },
           onFirstRemoteVideoFrameRendered: (key, info) => {
             if (key.streamIndex === StreamIndex.STREAM_INDEX_MAIN)
+              logFrame('Remote frame rendered', info);
+            if (key.streamIndex === StreamIndex.STREAM_INDEX_MAIN)
               emit({
                 type: 'rendered',
                 stream: remote(key),
                 width: info.width,
                 height: info.height,
               });
+          },
+          onRemoteVideoSizeChanged: (key, info) => {
+            if (key.streamIndex === StreamIndex.STREAM_INDEX_MAIN)
+              logFrame('Remote video size changed', info);
           },
           onSEIMessageReceived: (key, message) => {
             if (key.streamIndex !== StreamIndex.STREAM_INDEX_MAIN) return;
@@ -305,12 +347,72 @@ export class RtcManager {
     await ready;
   }
 
-  /** Enables the vendor's internal static-image source without opening the camera. */
-  startImage(filePath: string): void {
+  /** Starts fixed-size native frames on Android and the vendor image source on iOS. */
+  async startImage(
+    filePath: string,
+    format: RealtimeVideoFormat,
+  ): Promise<void> {
     const engine = this.requireEngine();
+
+    if (Platform.OS === 'android') {
+      const owner = this.owner!;
+
+      await NativeRuntime.startImageVideo(
+        owner,
+        filePath,
+        format.width,
+        format.height,
+        format.fps,
+      );
+      if (this.owner !== owner || !this.active) throw cancelledError();
+
+      this.logger.business('Native image frames started', {
+        width: format.width,
+        height: format.height,
+        fps: format.fps,
+        rotation: 0,
+      });
+      return;
+    }
 
     check(engine.setDummyCaptureImagePath(filePath), 'Set image source');
     check(engine.stopVideoCapture(), 'Start static image video');
+  }
+
+  /** Selects an image source before encoder setup; external frames keep their dimensions. */
+  configureImageSource(format: RealtimeVideoFormat): void {
+    if (this.room) throw invalid('Set image orientation before joining a room');
+
+    const engine = this.requireEngine();
+
+    if (Platform.OS === 'android') {
+      check(engine.stopVideoCapture(), 'Stop internal video capture');
+      check(
+        engine.setVideoSourceType(
+          StreamIndex.STREAM_INDEX_MAIN,
+          VideoSourceType.VIDEO_SOURCE_TYPE_EXTERNAL,
+        ),
+        'Configure external image source',
+      );
+      // Fixed-orientation APIs apply to internal capture, not these upright pixels.
+      return;
+    }
+
+    const portrait = format.height >= format.width;
+
+    check(
+      engine.setVideoOrientation(
+        portrait ? VideoOrientation.PORTRAIT : VideoOrientation.LANDSCAPE,
+      ),
+      'Configure image orientation',
+    );
+
+    this.logger.business('Image orientation configured', {
+      orientation: portrait ? 'portrait' : 'landscape',
+      width: format.width,
+      height: format.height,
+      fps: format.fps,
+    });
   }
 
   async configureEncoding(
@@ -331,6 +433,11 @@ export class RtcManager {
       await this.requireEngine().setVideoEncoderConfig([config]),
       'Configure video encoder',
     );
+    this.logger.business('Video encoder configured', {
+      width: format.width,
+      height: format.height,
+      fps: format.fps,
+    });
   }
 
   async switchCamera(position: CameraPosition): Promise<void> {
@@ -369,6 +476,8 @@ export class RtcManager {
 
     this.room = room;
     this.connection = connection;
+    let lastEncodedSize = '';
+
     await waitFor<void>(
       (resolve, reject) => {
         const current = () =>
@@ -376,6 +485,23 @@ export class RtcManager {
 
         check(
           room.setRTCRoomEventHandler({
+            onLocalStreamStats: stats => {
+              if (!current() || !this.logger.businessEnabled || stats.isScreen)
+                return;
+
+              const video = stats.videoStats;
+              const width = video.encodedFrameWidth;
+              const height = video.encodedFrameHeight;
+              const size = `${width}x${height}`;
+
+              if (width <= 0 || height <= 0 || size === lastEncodedSize) return;
+
+              lastEncodedSize = size;
+              this.logger.business('Local video encoded dimensions', {
+                width,
+                height,
+              });
+            },
             onRoomStateChanged: (id, userID, state) => {
               if (
                 !current() ||
@@ -522,6 +648,12 @@ export class RtcManager {
           : RenderMode.ByteRTCRenderModeHidden,
     };
 
+    this.logger.business('Video canvas binding', {
+      source: stream ? 'remote' : 'local',
+      contentMode: mode,
+      renderMode: canvas.renderMode,
+    });
+
     if (stream)
       check(
         engine.setRemoteVideoCanvas(
@@ -574,6 +706,8 @@ export class RtcManager {
 
   close(): Promise<void> {
     if (this.closing) return this.closing;
+    if (this.owner && Platform.OS === 'android')
+      NativeRuntime.stopImageVideo(this.owner);
     if (this.engine && this.active) {
       this.engine.setDummyCaptureImagePath('');
       this.engine.stopVideoCapture();

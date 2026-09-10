@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   XmaxClient,
+  XmaxLoggerOption,
   XmaxRealtimeVideo,
   RealtimeModel,
   VideoContentMode,
@@ -127,6 +128,7 @@ export function RealtimeScreen({
     const realtime = new XmaxClient({
       apiKey,
       environment,
+      loggerOptions: __DEV__ ? XmaxLoggerOption.all : 0,
     }).createRealtimeManager({ model: RealtimeModel.x2_0 });
 
     manager.current = realtime;
@@ -284,7 +286,18 @@ export function RealtimeScreen({
 
   return (
     <View style={styles.page}>
-      <View style={[styles.preview, { marginTop: previewTop }]}>
+      <View
+        style={[styles.preview, { marginTop: previewTop }]}
+        onLayout={({ nativeEvent: { layout } }) => {
+          if (__DEV__)
+            console.info('[XLab] Realtime viewport', {
+              source: fileURL ? 'image' : 'camera',
+              width: layout.width,
+              height: layout.height,
+              contentMode: fileURL ? 'fit' : 'fill',
+            });
+        }}
+      >
         <XmaxRealtimeVideo
           localTrack={localTrack}
           remoteTrack={remoteTrack}

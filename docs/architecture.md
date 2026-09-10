@@ -52,7 +52,7 @@ XmaxSDK/
 │   ├── Media/
 │   │   ├── MediaControlling.ts / MediaController.ts
 │   │   ├── Camera/                      # CameraController
-│   │   ├── Image/                       # ImageController；准备图片与 dummy capture
+│   │   ├── Image/                       # ImageController；准备图片与平台图片源
 │   │   └── Interaction/                 # 轨迹采样、坐标映射、任务关联
 │   ├── Stream/
 │   │   ├── StreamControlling.ts / StreamController.ts
@@ -89,7 +89,7 @@ XmaxSDK/
 
 TS 负责公开 API、HTTP、session 心跳、房间 JSON、任务确认、错误、配置、存储业务、模型尺寸规则和 UI。媒体采集、编码、传输、解码、视频显示由厂商原生 SDK 执行；不把像素/PCM/Base64 放进 JS 事件或每帧跨边界。
 
-图片线路固定使用 setDummyCaptureImagePath。Foundation/File 将 fileURL 转为有效绝对路径；ImageController 统一方向、输出尺寸及本地预览。图片没有本地 RTC 预览，因此 Render 使用 RN Image。stopVideoCapture 会激活 dummy 图，不能把它单独当作停止图片推流：关闭/切源必须清空 dummy 路径并正确取消发布、解绑。
+图片线路由 ImageController 统一方向、输出尺寸及本地预览。Android 使用 XmaxImageVideoSource 将准备图片解码一次，以原始宽高、零旋转、递增时间戳提交外部视频帧，像素不跨 JS；RN iOS 保留 setDummyCaptureImagePath。Render 继续使用 RN Image。Android 关闭时先停止原生送帧，再销毁 RTC；iOS 清空 dummy 路径后销毁引擎。最后删除准备图片。
 
 首版不主动发送 SEI；接收服务端 SEI 并匹配 taskID/roomID/bot 仍保留。RTCRoom 消息和 HTTP session 均按 iOS schema，10 秒双重心跳独立；TS timer 用于前台，不承诺后台维持。包内不引入插帧和文件视频输入。
 
@@ -126,7 +126,7 @@ Controller 更新状态后再交付监听器。内部事件带 manager/operation
 
 ## 摄像头阶段实现
 
-当前范围、iOS 源码快照、厂商修补与验证边界见 [camera-implementation.md](camera-implementation.md)。原生仅实现权限、owner 租约、后台销毁和 runtime 信息；生成协议与 HTTP 仍在 TypeScript。
+当前范围、iOS 源码快照、厂商修补与验证边界见 [camera-implementation.md](camera-implementation.md)。原生实现文件/图片准备、Android 静态图片帧、权限、owner 租约、后台销毁和 runtime 信息；生成协议与 HTTP 仍在 TypeScript。
 
 ## 存储阶段实现
 

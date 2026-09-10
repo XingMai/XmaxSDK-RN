@@ -42,6 +42,13 @@ export class RoomController {
   ): void {
     if (!this.connection) throw cancelledError();
 
+    if (format)
+      this.rtc.logger.business('Generation signal dimensions', {
+        event,
+        width: format.width,
+        height: format.height,
+      });
+
     this.rtc.send(
       roomEvent(
         event,

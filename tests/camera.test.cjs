@@ -150,6 +150,32 @@ test('room payload and OS task identifier match iOS, with strict SEI matching', 
     assert.equal(matchesTaskSEI(id, wrong), false);
 });
 
+test('Android task IDs and SEI confirmations omit the OS suffix', () => {
+  const id = taskIDFromUUID('00112233-4455-4677-8899-aabbccddeeff', 'android');
+  assert.equal(id, 'task-ABEiM0RVRneImaq7zN3u_w');
+
+  for (const event of ['start', 'change_condition', 'stop']) {
+    const payload = JSON.parse(
+      roomEvent(event, 'user-1', { ...runtime, platform: 'android' }, id),
+    );
+    assert.equal(payload.uid, id);
+    assert.equal(payload.runtime.platform, 'android');
+  }
+
+  assert(matchesTaskSEI(id, id));
+  assert(matchesTaskSEI(id, ` ${id}&index=42\n`));
+  for (const wrong of [
+    `${id}?os=android`,
+    `${id}?os=android&index=42`,
+    `${id}?os=ios`,
+    `${id}&index=-1`,
+    `${id}&index=4x`,
+    `${id}other`,
+  ]) {
+    assert.equal(matchesTaskSEI(id, wrong), false);
+  }
+});
+
 test('interrupt cancels confirmation promptly, cleanup runs once, operation gate reopens', async () => {
   const coordinator = new RealtimeCoordinator();
   let cleaned = 0;
@@ -277,7 +303,8 @@ class FakeRtc {
   closed = false;
   joins = 0;
   closes = 0;
-  constructor() {
+  constructor(logger = { business() {} }) {
+    this.logger = logger;
     FakeRtc.instances.push(this);
   }
   randomUUID() {
@@ -301,6 +328,7 @@ class FakeRtc {
     this.camera = true;
   }
   configureEncoding() {}
+  configureImageSource(format) { this.imageSourceFormat = { ...format }; }
   switchCamera() {}
   async join() {
     this.joins++;
@@ -602,6 +630,7 @@ test('image pipeline uses prepared dimensions/path, no camera permissions, and c
   assert.deepEqual(local.videoTrack.videoFormat, { width: 1024, height: 768, fps: 24 });
   assert.equal(local.videoTrack.position, null);
   assert.equal(rtc.imagePath, '/cache/prepared image.jpg');
+  assert.deepEqual(rtc.imageSourceFormat, local.videoTrack.videoFormat);
   assert.equal(rtc.permissionCalls, 0);
   assert.equal(rtc.camera, false);
   await manager.stopLocalCameraStream();

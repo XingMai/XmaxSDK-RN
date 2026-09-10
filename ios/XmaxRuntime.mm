@@ -97,6 +97,14 @@ RCT_EXPORT_MODULE(XmaxRuntime)
   [self.images remove:fileURL resolve:resolve reject:reject];
 }
 
+- (void)startImageVideo:(NSString *)owner path:(NSString *)path width:(double)width height:(double)height fps:(double)fps resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
+  reject(@"MEDIA_ERROR", @"Native image video source is Android-only", nil);
+}
+
+- (void)stopImageVideo:(NSString *)owner {
+  // iOS keeps its existing RTC static-image source.
+}
+
 - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:(const facebook::react::ObjCTurboModule::InitParams &)params {
   return std::make_shared<facebook::react::NativeXmaxRuntimeSpecJSI>(params);
 }
