@@ -15,6 +15,60 @@ compiled._compile(ts.transpileModule(readFileSync(filename, 'utf8'), {
 }).outputText, filename);
 const { ConfigurationStore } = compiled.exports;
 
+// Model the pinned iOS helper: any present cloudSync NSNumber enables sync,
+// including @NO. This is the native boundary the in-memory store tests omit.
+function iosSecureStorage() {
+  const entries = new Map();
+  const slot = options => `${options.service}:${options.cloudSync !== undefined}`;
+  const keychain = {
+    ACCESSIBLE: { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'device-only' },
+    STORAGE_TYPE: { AES_GCM_NO_AUTH: 'aes-gcm' },
+    async getGenericPassword(options) {
+      const password = entries.get(slot(options));
+      return password === undefined ? false : { password };
+    },
+    async setGenericPassword(username, password, options) {
+      if (options.cloudSync !== undefined && options.accessible === 'device-only') {
+        throw new Error('Synchronizable entries cannot use device-only accessibility');
+      }
+      entries.set(slot(options), password);
+      return { service: options.service };
+    },
+    async resetGenericPassword(options) {
+      entries.delete(slot(options));
+      return true;
+    },
+  };
+  const adapterPath = resolve(__dirname, '../Example/XLab/src/configuration/SecureConfigurationStorage.ts');
+  const adapter = new Module(adapterPath, module);
+  adapter.require = name => name === 'react-native-keychain' ? keychain : require(name);
+  adapter._compile(ts.transpileModule(readFileSync(adapterPath, 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText, adapterPath);
+  return adapter.exports.secureConfigurationStorage;
+}
+
+test('secure adapter saves, restores and deletes local iOS keys with the pinned cloudSync semantics', async () => {
+  const secure = iosSecureStorage(), store = new ConfigurationStore(secure);
+  await store.load();
+  store.setKey('china', 'china-fixture');
+  store.selectEnvironment('global');
+  store.setKey('global', 'global-fixture');
+  await nextTurn();
+  assert.equal(store.getSnapshot().error, null);
+
+  const reloaded = new ConfigurationStore(secure);
+  await reloaded.load();
+  assert.equal(reloaded.getSnapshot().environment, 'global');
+  assert.deepEqual(reloaded.getSnapshot().keys, { china: 'china-fixture', global: 'global-fixture' });
+
+  reloaded.setKey('global', '');
+  await nextTurn();
+  const afterDeletion = new ConfigurationStore(secure);
+  await afterDeletion.load();
+  assert.deepEqual(afterDeletion.getSnapshot().keys, { china: 'china-fixture', global: '' });
+});
+
 function deferred() {
   let resolve, reject;
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });

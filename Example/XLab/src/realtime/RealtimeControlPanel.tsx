@@ -43,6 +43,7 @@ export function RealtimeControlPanel({
   connected,
   canSubmit,
 }: {
+  /** Keeps reference thumbnails and prompt controls above the home indicator. */
   bottomInset: number;
   apiKey: string;
   environment: XmaxEnvironment;

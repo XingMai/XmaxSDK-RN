@@ -30,11 +30,12 @@ export const secureConfigurationStorage: ConfigurationStorage = {
       return;
     }
 
+    // Keychain 10.0.0 on iOS treats any supplied cloudSync value as true,
+    // even false. Omit it to keep writes local, matching reads and deletion.
     const result = await setGenericPassword('xlab', value, {
       service: service(field),
       accessible: ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
       storage: STORAGE_TYPE.AES_GCM_NO_AUTH,
-      cloudSync: false,
     });
 
     if (!result) throw new Error('Unable to save XLab configuration');

@@ -35,7 +35,7 @@ iOS 工作区为 `Example/XLab/ios/XLab.xcworkspace`。当前火山 iOS 二进�
 
 Android 原生工程为 `Example/XLab/android`。厂商 Maven 仓库已经配置；旧 Support Library 传递依赖需要工程中的 `android.enableJetifier=true`，来源与验证见实现记录。首次构建会下载 Gradle、SDK、NDK 和 Maven 依赖。
 
-运行后在首页选择中国/全球环境，输入 API Key，进入摄像头。空 Key 可看预览，生成需要有效 Key。输入提示词后发送；再次发送更新条件，停止按钮断开生成并保留相机预览，返回释放摄像头。Key 只保留在 App 内存中，不写入仓库或本地存储。
+运行后在首页选择中国/全球环境，输入 API Key，进入摄像头。空 Key 可看预览，生成需要有效 Key。输入提示词后发送；再次发送更新条件，停止按钮断开生成并保留相机预览，返回释放摄像头。XLab 将两种环境的 Key 分别保存到 iOS Keychain / Android Keystore 支持的本机安全存储，启动时恢复；清空输入会删除对应 Key。SDK 本身不持久化 Key。
 
 本机 Pixel 模拟器若默认宿主地址无法连到 Metro，可执行 `adb reverse tcp:8081 tcp:8081`，在 Dev Settings 中把调试地址设为 `localhost:8081`。这只是本机调试配置，不写入业务 SDK。
 

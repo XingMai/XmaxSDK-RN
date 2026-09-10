@@ -61,7 +61,7 @@ export function StorageScreen({
     <View style={styles.page}>
       <View pointerEvents="none" style={styles.primaryGlow} />
       <View pointerEvents="none" style={styles.secondaryGlow} />
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
         <View style={styles.topBar}>
           <Pressable
             accessibilityRole="button"
@@ -83,6 +83,9 @@ export function StorageScreen({
           </View>
         </View>
         <ScrollView
+          contentInsetAdjustmentBehavior="never"
+          automaticallyAdjustContentInsets={false}
+          automaticallyAdjustsScrollIndicatorInsets={false}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.content}
         >

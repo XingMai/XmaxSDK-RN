@@ -36,8 +36,9 @@ import { RealtimeLoadingOverlay } from '../realtime/RealtimeLoadingOverlay';
  * Closes the realtime manager on unmount or backgrounding. Foreground recovery
  * restores local preview without automatically restarting generation.
  * Native back gestures remain uninterrupted; cancelling a swipe keeps preview alive.
- * The preview ends above the control panel; file input starts 68 points below
- * the top safe area, matching the UIKit XLab viewport.
+ * The preview and controls respect the top safe area, with another 68 points
+ * reserved above file input. The control panel extends to the bottom edge and
+ * pads its content above the bottom safe area.
  */
 export function RealtimeScreen({
   apiKey,
@@ -265,7 +266,7 @@ export function RealtimeScreen({
     RealtimeConnectionState.connected,
     RealtimeConnectionState.generating,
   ].includes(state.connectionState);
-  const previewTop = fileURL ? insets.top + 68 : 0;
+  const previewTop = insets.top + (fileURL ? 68 : 0);
 
   return (
     <View style={styles.page}>

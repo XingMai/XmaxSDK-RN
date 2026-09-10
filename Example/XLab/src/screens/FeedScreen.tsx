@@ -128,8 +128,11 @@ export function FeedScreen({
     <View style={styles.page}>
       <View pointerEvents="none" style={styles.blueGlow} />
       <View pointerEvents="none" style={styles.mintGlow} />
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
         <ScrollView
+          contentInsetAdjustmentBehavior="never"
+          automaticallyAdjustContentInsets={false}
+          automaticallyAdjustsScrollIndicatorInsets={false}
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
