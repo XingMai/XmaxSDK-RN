@@ -7,10 +7,16 @@ import type {
 import { repeatHeartbeat } from '../../Foundation/Runtime/Async';
 import { roomEvent } from './RoomEvent';
 import { cancelledError } from '../../Foundation/Errors/XmaxError';
+
+/**
+ * Owns room membership, room heartbeats and generation signalling.
+ */
 export class RoomController {
   connection: RealtimeSessionConnection | null = null;
   private stopHeartbeat: (() => void) | null = null;
+
   constructor(private readonly rtc: RtcManager) {}
+
   async join(
     connection: RealtimeSessionConnection,
     microphone: boolean,
@@ -27,6 +33,7 @@ export class RoomController {
       () => {},
     );
   }
+
   send(
     event: 'start' | 'change_condition' | 'stop',
     taskID: string,
@@ -34,6 +41,7 @@ export class RoomController {
     context?: RealtimeContext,
   ): void {
     if (!this.connection) throw cancelledError();
+
     this.rtc.send(
       roomEvent(
         event,
@@ -45,6 +53,7 @@ export class RoomController {
       ),
     );
   }
+
   leave(): void {
     this.stopHeartbeat?.();
     this.stopHeartbeat = null;

@@ -3,6 +3,10 @@ import type {
   XmaxDownloadedFile,
   StorageProgress,
 } from '../../Core/Storage/XmaxStorageManaging';
+
+/**
+ * Validated COS endpoint, prefix and temporary credentials for a single upload.
+ */
 export interface StorageConfiguration {
   readonly bucket: string;
   readonly region: string;
@@ -14,8 +18,14 @@ export interface StorageConfiguration {
     readonly sessionToken: string;
   };
 }
+
+/**
+ * The internal transport boundary used by StorageService, without exposed
+ * vendor objects.
+ */
 export interface StorageManaging {
   fileSize(fileURL: string): Promise<number>;
+
   upload(options: {
     fileURL: string;
     objectKey: string;
@@ -24,6 +34,7 @@ export interface StorageManaging {
     progress: (value: StorageProgress) => void;
     signal: AbortSignal;
   }): Promise<XmaxUploadedFile>;
+
   download(options: {
     remoteURL: string;
     destinationURL: string;

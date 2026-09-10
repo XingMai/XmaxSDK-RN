@@ -64,7 +64,19 @@ SDK 的 strict / noUncheckedIndexedAccess / exactOptionalPropertyTypes / skipLib
 1. 真实 iPhone / Android 相机、麦克风、首帧显示和后台行为；有效 Key 下无输入 SEI 的 session → start → 回传任务 SEI → 视频显示端到端联调。没有实际服务响应时不降低成功条件。
 2. 服务端心跳过期回收：原生 destroy 仅保证本地媒体停止，不等于远端 session DELETE 成功或停止计费。
 3. 当前火山 iOS 二进制没有 arm64 模拟器切片，只有真机 arm64 和模拟器 x86_64。Apple Silicon 原生模拟器 RTC 构建失败；优先真机，不通过升级未审核 RTC 或全局排除 arm64 假装修好。Rosetta 模拟器未验收。
-4. 厂商 rendered 回调是流首帧事件，当前已绑定视图上的连续任务可复用真实显示状态；同一远端流销毁视图后重新挂载是否再次回调尚未验证。当前不把 onLoad / decoded 历史事件当显示成功，40 秒后明确提示重试。必要的逐绑定原生显示事件仍是发布前缺口。
+4. 厂商 rendered 回调是流首帧事件，当前已绑定视图上的连续任务可复用真实显示状态；同一远端流销毁视图后重新挂载是否再次回调尚未验证。当前不把 onLoad / decoded 历史事件当显示成功。2026-09-10 对齐 iOS 分工后，SDK 视频组件不再自带 loading 和 40 秒提示；XLab 负责生成等待与操作错误展示。必要的逐绑定原生显示事件仍是发布前缺口。
+
+## 远端画面切换修正（2026-09-10）
+
+RN 的对应组件为 `XmaxRealtimeVideo`，没有单独导出 UIKit 名称 `XmaxRealtimeVideoView`。XLab 已使用该组件保留本地底图，并等待 SEI 确认与匹配的 rendered 事件后淡入远端画面。
+
+针对用户反馈的生成开始时闪烁，修正两个代码时序风险：VideoSurface 的首次绑定和内容模式 effect 原来会连续调用两次 native bind；现在由内部 VideoSurfaceBinding 管理单次绑定，同一模式不重复设置。远端层按内部轨道标识独立创建透明度值，从首次提交就为 0，避免新轨道继承旧层透明度后再由 effect 清零。淡入为 300ms ease-in-out；重复显示通知不重启动画，卸载取消旧动画和事件订阅。
+
+本次保留 SDK 公开 API、XLab loading 归属与显示确认条件。新增 6 项回归测试覆盖重复绑定、两种确认顺序、重复通知、错误流/decoded 过滤、卸载后迟到事件、绑定失败。typecheck、ESLint、Prettier、46 项测试及 Android/iOS Release JS 打包通过；未操作设备复现云端生成，实际闪烁是否消除仍由用户验收。
+
+### 临时关闭视频切换动效
+
+按用户后续要求，远端层移除 Animated.timing 与 300ms 淡入，改用普通 View 的透明度 0/1 直接切换，以排查闪烁是否来自动效。继续等待任务确认与匹配的 rendered 事件，继续按轨道独立初始化显示状态。本节覆盖上文的淡入描述；XLab loading 动画独立于视频切换，本次未改动。
 5. 同一轨道只支持一个活动厂商 canvas；新绑定接管后旧视图卸载不会解绑新视图。不承诺同流多画布。
 6. 干净外部宿主安装、最低系统、完整 XLab 截图对照、R8 混淆、所有 ABI / 16KB page-size、许可证及可发布厂商修订包仍需验收。
 

@@ -32,5 +32,12 @@ target 'XLab' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+
+    # A reinstall can retain Release frameworks while removing their flavor
+    # markers. Let RN's own build scripts restore the requested configuration.
+    %w[React-Core-prebuilt ReactNativeDependencies hermes-engine].each do |pod|
+      directory = installer.sandbox.root.join(pod)
+      File.write(directory.join('.last_build_configuration'), 'unknown') if directory.directory?
+    end
   end
 end

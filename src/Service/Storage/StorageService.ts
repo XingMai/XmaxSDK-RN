@@ -15,6 +15,10 @@ import {
   filePath,
 } from './StorageValidation';
 
+/**
+ * Coordinates temporary credentials, object naming, explicit safety checks and
+ * per-operation cancellation.
+ */
 export class StorageService {
   constructor(
     private readonly api: ApiServicing,
@@ -22,6 +26,7 @@ export class StorageService {
     private readonly uuid: () => string,
     private readonly now: () => number = Date.now,
   ) {}
+
   async upload(
     options: UploadFileOptions,
     media: 'image' | 'video',
@@ -36,7 +41,9 @@ export class StorageService {
           media,
           options.contentType,
         );
+
         await abortable(this.storage.fileSize(options.fileURL), signal);
+
         const config = parseStorageConfiguration(
           await abortable(this.api.request('GET', '/cos/sts'), signal),
         );
@@ -51,18 +58,21 @@ export class StorageService {
           signal,
           progress,
         });
+
         if (signal.aborted)
           throw new XmaxError({
             code: XmaxErrorCode.cancelled,
             message: 'Storage operation cancelled',
           });
         if (!checksSafety) return stored;
+
         const payload = record(
           await abortable(
             this.api.request('POST', '/cos/image/check', { url: stored.url }),
             signal,
           ),
         );
+
         if (typeof payload?.safe !== 'boolean')
           throw new XmaxError({
             code: XmaxErrorCode.apiError,
@@ -73,16 +83,20 @@ export class StorageService {
             code: XmaxErrorCode.unsafeImage,
             message: 'The image did not pass the safety check',
           });
+
         const checkedURL = nonEmpty(payload.url);
+
         if (!checkedURL)
           throw new XmaxError({
             code: XmaxErrorCode.apiError,
             message: 'Safety check returned no URL',
           });
+
         return { ...stored, url: httpURL(checkedURL).href };
       },
     );
   }
+
   async download(options: DownloadFileOptions) {
     return this.operation(
       options,
@@ -90,10 +104,12 @@ export class StorageService {
       async (signal, progress) => {
         httpURL(options.remoteURL);
         filePath(options.destinationURL);
+
         return this.storage.download({ ...options, signal, progress });
       },
     );
   }
+
   private async operation<T>(
     options: Pick<UploadFileOptions, 'signal' | 'progress'>,
     code: XmaxErrorCode,
@@ -110,12 +126,16 @@ export class StorageService {
       timedOut = true;
       controller.abort();
     }, 15 * 60 * 1000);
+
     options.signal?.addEventListener('abort', abort);
     if (options.signal?.aborted) controller.abort();
+
     try {
       if (controller.signal.aborted) throw new Error('Cancelled');
+
       return await run(controller.signal, value => {
         if (finished || controller.signal.aborted) return;
+
         try {
           options.progress?.(value);
         } catch {
@@ -131,6 +151,7 @@ export class StorageService {
             : 'Storage operation cancelled',
         });
       if (error instanceof XmaxError) throw error;
+
       throw new XmaxError({
         code,
         message:

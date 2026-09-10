@@ -3,6 +3,10 @@ import type {
   RealtimeVideoFormat,
 } from '../../Service/Realtime/RealtimeTypes';
 import type { RuntimeInfo } from '../../Foundation/Runtime/RuntimeInfo';
+
+/**
+ * Serializes a room command using the shared Xmax signalling schema.
+ */
 export function roomEvent(
   event: 'start' | 'change_condition' | 'stop' | 'heartbeat',
   userID: string,

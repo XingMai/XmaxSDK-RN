@@ -30,7 +30,7 @@ React 页面 → XmaxVideo / XmaxRealtimeVideo → RenderController → RTC 原�
 
 ## 2. 目录和所有权
 
-以下是实施时的目标结构；当前已落地摄像头所需的 Core、Service、Media/Camera、Stream、Render 与 Foundation，以及 Core/Storage、Service/Storage、Foundation/Storage。Example/XLab 接入首页、自由提示词摄像头页和存储页；图片生成/轨迹目录仍按后续实际实现创建。
+以下是实施时的目标结构；当前已落地摄像头所需的 Core、Service、Media/Camera、Stream、Render 与 Foundation，以及 Core/Storage、Service/Storage、Foundation/Storage。Example/XLab 接入首页、共享摄像头/图片生成页和存储页；现已增加 MediaController、Media/Image、Foundation/Media 和原生图片处理，轨迹仍待实施。
 
 ```text
 XmaxSDK/

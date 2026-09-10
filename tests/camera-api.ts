@@ -63,8 +63,11 @@ export async function cameraContract(client: XmaxClient) {
   state.sessionId;
   // @ts-expect-error No local video input in this SDK.
   manager.createLocalVideoStream({ fileURL: 'file:///video.mp4' });
-  // @ts-expect-error Image route is not implemented in the camera stage.
-  manager.createLocalImageStream({ fileURL: 'file:///image.jpg' });
+  const image: RealtimeMediaStream = await manager.createLocalImageStream({ fileURL: 'file:///image.jpg', videoFormat: null });
+  await manager.stopLocalImageStream();
+  void image;
+  // @ts-expect-error Image input requires a fileURL.
+  manager.createLocalImageStream({ uri: 'file:///image.jpg' });
   const storage = client.createStorageManager();
   const uploaded = await storage.uploadImage({fileURL: 'file:///tmp/example.png', progress: p => { const n: number | null = p.fractionCompleted; return n; }});
   const downloaded = await storage.downloadImage({remoteURL: uploaded.url, destinationURL: 'file:///tmp/result.png'});

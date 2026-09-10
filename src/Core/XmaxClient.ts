@@ -20,13 +20,35 @@ import {
   MediaService,
   type MediaServicing,
 } from '../Service/Media/MediaService';
+
+/**
+ * Creates realtime, storage and media services from a shared configuration.
+ *
+ * Creating a client does not request permissions or start a network session.
+ * Each realtime manager owns its own lifecycle and must be closed by its
+ * caller.
+ */
 export class XmaxClient {
+  /**
+   * The normalized, immutable configuration used by services created by this
+   * client.
+   */
   readonly configuration: Readonly<Required<XmaxConfiguration>>;
+
+  /**
+   * Stores a copy of the configuration, trimming the API key and applying
+   * defaults.
+   *
+   * An empty key is allowed for local camera preview. Invalid configuration
+   * values throw XmaxError synchronously.
+   */
   constructor(configuration: XmaxConfiguration) {
     if (!configuration || typeof configuration.apiKey !== 'string')
       throw invalid('API key must be a string');
+
     const environment = configuration.environment ?? XmaxEnvironment.china;
     const loggerOptions = configuration.loggerOptions ?? 0;
+
     if (
       !Object.values(XmaxEnvironment).includes(environment) ||
       !Number.isInteger(loggerOptions) ||
@@ -34,23 +56,42 @@ export class XmaxClient {
       (loggerOptions & ~3) !== 0
     )
       throw invalid('Invalid Xmax configuration');
+
     this.configuration = Object.freeze({
       apiKey: configuration.apiKey.trim(),
       environment,
       loggerOptions,
     });
   }
+
+  /**
+   * Creates an independent realtime manager for the selected model.
+   *
+   * Camera capture starts only when createLocalCameraStream() is called.
+   *
+   * @returns A manager that the caller must close when it is no longer needed.
+   */
   createRealtimeManager(options: RealtimeConfiguration): XmaxRealtimeManaging {
     if (options.model !== RealtimeModel.x2_0)
       throw invalid('Unsupported realtime model');
+
     return new XmaxRealtimeManager(this.configuration, options);
   }
+
+  /**
+   * Creates a storage manager using this client's API key and environment.
+   *
+   * Throws XmaxError synchronously if the API key is empty. Storage operations
+   * are independent of realtime managers and their close() calls.
+   */
   createStorageManager(): XmaxStorageManaging {
     if (!this.configuration.apiKey) throw invalid('API key cannot be empty');
+
     const runtime = {
       ...JSON.parse(NativeRuntime.runtimeInfo()),
       sdk_version: '0.0.1',
     };
+
     return new XmaxStorageManager(
       new StorageService(
         new ApiService(
@@ -63,11 +104,18 @@ export class XmaxClient {
       ),
     );
   }
+
+  /**
+   * Creates a service for synchronous model input-size calculations.
+   *
+   * Defaults to x2.0 and does not allocate camera or RTC resources.
+   */
   createMediaService(
     model: RealtimeModel = RealtimeModel.x2_0,
   ): MediaServicing {
     if (model !== RealtimeModel.x2_0)
       throw invalid('Unsupported realtime model');
+
     return new MediaService(model);
   }
 }

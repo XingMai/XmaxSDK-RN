@@ -1,6 +1,5 @@
 import { useEffect, useState, type ComponentProps } from 'react';
 import {
-  BackHandler,
   ActivityIndicator,
   AppState,
   Image,
@@ -17,11 +16,19 @@ import Video from 'react-native-video';
 import { useStorage, formatFileSize } from '../storage/useStorage';
 
 const orange = '#F5B86C';
+
 const font = (size: number) => size * 1.15;
+
 function Label({ style, ...props }: ComponentProps<typeof Text>) {
   return <Text {...props} style={[styles.text, style]} />;
 }
 
+/**
+ * Presents file selection, local preview and storage transfer results.
+ *
+ * The storage hook owns uploads and temporary files. Video preview pauses
+ * while the application is not active.
+ */
 export function StorageScreen({
   onBack,
   apiKey,
@@ -37,25 +44,19 @@ export function StorageScreen({
   const [foreground, setForeground] = useState(
     AppState.currentState === 'active',
   );
+
   useEffect(() => {
     const sub = AppState.addEventListener('change', state =>
       setForeground(state === 'active'),
     );
+
     return () => sub.remove();
   }, []);
+
   useEffect(() => setCopied(false), [result]);
+
   const fraction = progress?.fractionCompleted ?? 0;
 
-  useEffect(() => {
-    const subscription = BackHandler.addEventListener(
-      'hardwareBackPress',
-      () => {
-        onBack();
-        return true;
-      },
-    );
-    return () => subscription.remove();
-  }, [onBack]);
   return (
     <View style={styles.page}>
       <View pointerEvents="none" style={styles.primaryGlow} />

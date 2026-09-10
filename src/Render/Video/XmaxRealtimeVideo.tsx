@@ -1,23 +1,42 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Animated,
-  StyleSheet,
-  Text,
-  View,
-  type ViewProps,
-} from 'react-native';
+import { useState } from 'react';
+import { StyleSheet, View, type ViewProps } from 'react-native';
 import { VideoSurface } from './XmaxVideo';
 import { videoBinding } from '../RenderController';
 import {
   VideoContentMode,
   type RealtimeVideoTrack,
 } from '../../Service/Realtime/RealtimeTypes';
+
+/**
+ * Props for a local preview with a remote generation overlay.
+ */
 export interface XmaxRealtimeVideoProps extends ViewProps {
+  /**
+   * The local preview track. Must share its manager with remoteTrack when both
+   * are supplied.
+   */
   localTrack?: RealtimeVideoTrack | null;
+
+  /**
+   * The remote track to show after task confirmation and a matching render
+   * event.
+   */
   remoteTrack?: RealtimeVideoTrack | null;
+
+  /**
+   * How both video layers scale inside the view. Defaults to
+   * VideoContentMode.fill.
+   */
   videoContentMode?: VideoContentMode;
 }
+
+/**
+ * Displays local preview until the remote generation can be shown.
+ *
+ * Both tracks must belong to the same manager. Removing the remote track
+ * reveals the local preview; unmounting does not close the manager. Loading
+ * indicators and error presentation belong to the host UI, as in iOS.
+ */
 export function XmaxRealtimeVideo({
   localTrack,
   remoteTrack,
@@ -25,35 +44,14 @@ export function XmaxRealtimeVideo({
   style,
   ...props
 }: XmaxRealtimeVideoProps) {
-  const opacity = useRef(new Animated.Value(0)).current;
-  const [ready, setReady] = useState(false);
-  const [timedOut, setTimedOut] = useState(false);
   const local = videoBinding(localTrack),
     remote = videoBinding(remoteTrack);
+
   if (local && remote && local.owner !== remote.owner)
     throw new Error(
       'Video tracks must belong to the same Xmax realtime manager',
     );
-  const display = useCallback(
-    (value: boolean) => {
-      setReady(value);
-      Animated.timing(opacity, {
-        toValue: value ? 1 : 0,
-        duration: value ? 300 : 0,
-        useNativeDriver: true,
-      }).start();
-    },
-    [opacity],
-  );
-  useEffect(() => {
-    display(false);
-    setTimedOut(false);
-  }, [remoteTrack, display]);
-  useEffect(() => {
-    if (!remoteTrack || ready) return;
-    const timer = setTimeout(() => setTimedOut(true), 40000);
-    return () => clearTimeout(timer);
-  }, [remoteTrack, ready]);
+
   return (
     <View {...props} style={[styles.container, style]}>
       <VideoSurface
@@ -62,41 +60,42 @@ export function XmaxRealtimeVideo({
         style={StyleSheet.absoluteFill}
       />
       {remoteTrack && (
-        <Animated.View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFill, { opacity }]}
-        >
-          <VideoSurface
-            track={remoteTrack}
-            videoContentMode={videoContentMode}
-            onDisplayed={display}
-            style={StyleSheet.absoluteFill}
-          />
-        </Animated.View>
-      )}
-      {remoteTrack && !ready && (
-        <View pointerEvents="none" style={styles.wait}>
-          <ActivityIndicator color="#fff" />
-          <Text style={styles.text}>
-            {timedOut ? '画面尚未显示，请停止后重试' : '等待生成画面…'}
-          </Text>
-        </View>
+        <RemoteVideoLayer
+          key={remote?.id ?? remoteTrack.id}
+          track={remoteTrack}
+          videoContentMode={videoContentMode}
+        />
       )}
     </View>
   );
 }
+
+/** Keeps each remote track hidden until ready, then reveals it without animation. */
+function RemoteVideoLayer({
+  track,
+  videoContentMode,
+}: {
+  track: RealtimeVideoTrack;
+  videoContentMode: VideoContentMode;
+}) {
+  const [displayed, setDisplayed] = useState(false);
+
+  return (
+    <View
+      pointerEvents="none"
+      style={[StyleSheet.absoluteFill, !displayed && styles.hidden]}
+    >
+      <VideoSurface
+        track={track}
+        videoContentMode={videoContentMode}
+        onDisplayed={setDisplayed}
+        style={StyleSheet.absoluteFill}
+      />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { backgroundColor: '#000', overflow: 'hidden' },
-  wait: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    backgroundColor: '#00000044',
-  },
-  text: { color: '#fff', fontSize: 14 },
+  hidden: { opacity: 0 },
 });

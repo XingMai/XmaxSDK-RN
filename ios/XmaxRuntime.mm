@@ -1,4 +1,5 @@
 #import "XmaxRuntime.h"
+#import "XmaxImageManager.h"
 #import <AVFoundation/AVFoundation.h>
 #import <UIKit/UIKit.h>
 #import <VolcEngineRTC/VolcEngineRTC.h>
@@ -6,6 +7,7 @@
 #import <sys/utsname.h>
 
 @interface XmaxRuntime () <RCTInvalidating>
+@property(nonatomic) XmaxImageManager *images;
 @property(nonatomic, copy) NSString *owner;
 @property(nonatomic) BOOL active;
 @property(nonatomic) BOOL foreground;
@@ -17,6 +19,7 @@ RCT_EXPORT_MODULE(XmaxRuntime)
 - (dispatch_queue_t)methodQueue { return dispatch_get_main_queue(); }
 - (instancetype)init {
   if ((self = [super init])) {
+    self.images = [XmaxImageManager new];
     self.foreground = UIApplication.sharedApplication.applicationState != UIApplicationStateBackground;
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(background:) name:UIApplicationDidEnterBackgroundNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(foreground:) name:UIApplicationWillEnterForegroundNotification object:nil];
@@ -42,6 +45,7 @@ RCT_EXPORT_MODULE(XmaxRuntime)
     self.active = NO;
     self.owner = nil;
   }
+  [self.images invalidate];
 }
 - (NSNumber *)acquire:(NSString *)owner {
   @synchronized(self) {
@@ -81,6 +85,18 @@ RCT_EXPORT_MODULE(XmaxRuntime)
   if (status == AVAuthorizationStatusNotDetermined) [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:cameraDone];
   else cameraDone(status == AVAuthorizationStatusAuthorized);
 }
+- (void)imageInfo:(NSString *)fileURL resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
+  [self.images info:fileURL resolve:resolve reject:reject];
+}
+
+- (void)prepareImage:(NSString *)fileURL width:(double)width height:(double)height resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
+  [self.images prepare:fileURL width:width height:height resolve:resolve reject:reject];
+}
+
+- (void)removePreparedImage:(NSString *)fileURL resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
+  [self.images remove:fileURL resolve:resolve reject:reject];
+}
+
 - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:(const facebook::react::ObjCTurboModule::InitParams &)params {
   return std::make_shared<facebook::react::NativeXmaxRuntimeSpecJSI>(params);
 }

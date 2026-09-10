@@ -1,4 +1,4 @@
-/** RN 首版设计契约，2026-09-09。完整目标声明；摄像头子集已实现，当前导出见 src/index.ts 与 camera-implementation.md。 */
+/** RN 首版设计契约，2026-09-09。完整目标声明；摄像头、图片和存储子集已实现，当前导出见 src/index.ts 及对应 implementation 文档。 */
 import type { ReactElement } from 'react';
 import type { ViewProps } from 'react-native';
 
@@ -50,6 +50,11 @@ export interface RealtimeConfiguration { readonly model: RealtimeModel }
 /** CGSize 的 RN 表示，属于平台类型适配。 */
 export interface MediaSize { readonly width: number; readonly height: number }
 export interface RealtimeVideoFormat extends MediaSize { readonly fps: number }
+/** 本地图片输入；原件归调用方所有，准备副本由 Manager 清理。 */
+export interface ImageStreamOptions {
+  readonly fileURL: string;
+  readonly videoFormat?: RealtimeVideoFormat | null;
+}
 export interface RealtimeContext {
   readonly prompt: string;
   readonly referencePath?: string | null;
@@ -109,10 +114,7 @@ export interface XmaxRealtimeManaging {
   }): Promise<RealtimeMediaStream>;
   stopLocalCameraStream(): Promise<void>;
   switchCamera(): Promise<RealtimeMediaStream>;
-  createLocalImageStream(options: {
-    fileURL: string;
-    videoFormat?: RealtimeVideoFormat | null;
-  }): Promise<RealtimeMediaStream>;
+  createLocalImageStream(options: ImageStreamOptions): Promise<RealtimeMediaStream>;
   stopLocalImageStream(): Promise<void>;
   connect(options: { localStream: RealtimeMediaStream }): Promise<RealtimeMediaStream>;
   disconnect(): Promise<void>;

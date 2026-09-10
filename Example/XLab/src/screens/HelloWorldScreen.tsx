@@ -4,6 +4,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { XmaxSDKInfo } from '@xmax/react-native-sdk';
 import { colors } from '../theme/tokens';
 
+/**
+ * Displays the original bootstrap screen for checking the host setup.
+ *
+ * The main XLab navigation uses FeedScreen instead.
+ */
 export function HelloWorldScreen(): React.JSX.Element {
   return (
     <SafeAreaView style={styles.page}>
@@ -46,6 +51,7 @@ export function HelloWorldScreen(): React.JSX.Element {
     </SafeAreaView>
   );
 }
+
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.background, paddingHorizontal: 28 },
   header: {

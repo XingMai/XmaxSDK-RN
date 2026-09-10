@@ -36,6 +36,26 @@
       "path": "lib/module/index.js",
       "before": "var view = NativeView.getView(viewId, NativeSurfaceView);",
       "after": "var view = viewId ? NativeView.getView(viewId, NativeSurfaceView) : null;"
+    },
+    {
+      "path": "lib/commonjs/index.js",
+      "before": "this.logger.error(\"[message-client] Event emit failed: \".concat(eventName), err);",
+      "after": "this.logger.error(\"[message-client] Event emit failed: \".concat(eventName), {\n                                name: err && err.name ? String(err.name) : typeof err,\n                                message: err && err.message ? String(err.message) : String(err),\n                                stack: err && err.stack ? String(err.stack) : '',\n                                argumentKeys: decodeArgs.map(function (arg) {\n                                    return arg !== null && typeof arg === 'object' ? Object.keys(arg).slice(0, 16) : typeof arg;\n                                }),\n                            });"
+    },
+    {
+      "path": "lib/module/index.js",
+      "before": "this.logger.error(\"[message-client] Event emit failed: \".concat(eventName), err);",
+      "after": "this.logger.error(\"[message-client] Event emit failed: \".concat(eventName), {\n                                name: err && err.name ? String(err.name) : typeof err,\n                                message: err && err.message ? String(err.message) : String(err),\n                                stack: err && err.stack ? String(err.stack) : '',\n                                argumentKeys: decodeArgs.map(function (arg) {\n                                    return arg !== null && typeof arg === 'object' ? Object.keys(arg).slice(0, 16) : typeof arg;\n                                }),\n                            });"
+    },
+    {
+      "path": "lib/commonjs/index.js",
+      "before": "    t_StreamIndex.android_to_ts = function (value) {\n        var _a;",
+      "after": "    t_StreamIndex.android_to_ts = function (value) {\n        // Android serializes enum-valued object fields by name; direct arguments may be numeric.\n        if (value === 'STREAM_INDEX_MAIN') return exports.StreamIndex.STREAM_INDEX_MAIN;\n        if (value === 'STREAM_INDEX_SCREEN') return exports.StreamIndex.STREAM_INDEX_SCREEN;\n        var _a;"
+    },
+    {
+      "path": "lib/module/index.js",
+      "before": "    t_StreamIndex.android_to_ts = function (value) {\n        var _a;",
+      "after": "    t_StreamIndex.android_to_ts = function (value) {\n        // Android serializes enum-valued object fields by name; direct arguments may be numeric.\n        if (value === 'STREAM_INDEX_MAIN') return StreamIndex.STREAM_INDEX_MAIN;\n        if (value === 'STREAM_INDEX_SCREEN') return StreamIndex.STREAM_INDEX_SCREEN;\n        var _a;"
     }
   ]
 }

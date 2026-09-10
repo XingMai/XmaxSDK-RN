@@ -6,6 +6,10 @@ import type {
   RealtimeVideoFormat,
   RealtimeVideoTrack,
 } from '../Service/Realtime/RealtimeTypes';
+
+/**
+ * Internal mutable rendering state behind a stable public video track.
+ */
 export interface VideoBinding {
   readonly id: string;
   readonly owner: object;
@@ -16,31 +20,52 @@ export interface VideoBinding {
   format: RealtimeVideoFormat;
   position: CameraPosition | null;
   remote: RemoteStream | null;
+  /** Private prepared image used by the local RN preview, never a native RTC canvas. */
+  imageURL: string | null;
   version: number;
   readonly listeners: Set<() => void>;
 }
+
 const tracks = new WeakMap<RealtimeVideoTrack, VideoBinding>();
+
 const streams = new WeakMap<RealtimeMediaStream, VideoBinding>();
+
+/**
+ * Looks up internal binding state for a track without creating a new binding.
+ */
 export function videoBinding(
   track: RealtimeVideoTrack | null | undefined,
 ): VideoBinding | null {
   return track ? tracks.get(track) ?? null : null;
 }
+
+/**
+ * Publishes a binding change to mounted video components while preserving track
+ * identity.
+ */
 export function refreshBinding(binding: VideoBinding): void {
   binding.version++;
+
   for (const listener of [...binding.listeners]) listener();
 }
+
+/**
+ * Associates manager-owned streams and tracks with live native render bindings.
+ */
 export class RenderController {
   private owned = new Set<VideoBinding>();
+
   constructor(
     private readonly owner: object,
     private readonly rtc: RtcManager,
   ) {}
+
   create(
     local: boolean,
     format: RealtimeVideoFormat,
     position: CameraPosition | null,
     remote: RemoteStream | null = null,
+    imageURL: string | null = null,
   ): RealtimeMediaStream {
     const binding: VideoBinding = {
       id: this.rtc.randomUUID(),
@@ -52,6 +77,7 @@ export class RenderController {
       format: Object.freeze({ ...format }),
       position,
       remote,
+      imageURL,
       version: 0,
       listeners: new Set(),
     };
@@ -68,13 +94,17 @@ export class RenderController {
       id: local ? 'stream-local' : 'stream-remote',
       videoTrack: track,
     });
+
     tracks.set(track, binding);
     streams.set(stream, binding);
     this.owned.add(binding);
+
     return stream;
   }
+
   requireLocal(stream: RealtimeMediaStream): VideoBinding {
     const binding = streams.get(stream);
+
     if (
       !binding ||
       binding.owner !== this.owner ||
@@ -82,8 +112,10 @@ export class RenderController {
       !binding.valid
     )
       throw invalid('Local stream does not belong to this active manager');
+
     return binding;
   }
+
   invalidate(local: boolean | null = null): void {
     for (const binding of this.owned)
       if (local === null || binding.local === local) {

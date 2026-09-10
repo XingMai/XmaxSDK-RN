@@ -1,6 +1,6 @@
 # React Native 公开 API 标准
 
-2026-09-10。已确定的首版设计标准。当前已实现摄像头实时 API、组件、尺寸计算和存储；图片生成/交互仍是后续设计。完整目标声明见 [public-api.d.ts](public-api.d.ts)，当前可调用范围见 [camera-implementation.md](camera-implementation.md)、[storage-implementation.md](storage-implementation.md) 和 src/index.ts 导出，本文解释目标语义。关键名称、参数业务名、状态原始值及职责对齐当前 iOS 源码。
+2026-09-10。已确定的首版设计标准。当前已实现摄像头/图片实时 API、组件、尺寸计算和存储；轨迹交互仍是后续设计。完整目标声明见 [public-api.d.ts](public-api.d.ts)，当前可调用范围见 [camera-implementation.md](camera-implementation.md)、[image-implementation.md](image-implementation.md)、[storage-implementation.md](storage-implementation.md) 和 src/index.ts 导出，本文解释目标语义。关键名称、参数业务名、状态原始值及职责对齐当前 iOS 源码。
 
 最初设计参考 iOS 工作区 `/Users/xmax.ai/dev/Xmax/iOS/XmaxSDK`，HEAD 为 `961fbb37472f9a59f85502ebcacb74d6f5e66caa`，包含未提交修改，不能把本次参考描述为该 commit 的纯净发布版本；文件指纹见 [ios-reference.json](ios-reference.json)。摄像头实施采用更新后的工作区快照，见 [camera-ios-reference.json](camera-ios-reference.json)。
 
@@ -50,7 +50,7 @@ Client 只保存配置并创建 TS 服务，不启动 RTC、不申请权限、�
 
 本地源一次只允许一个；创建新源之前断开并停止旧源。不隐式覆盖。创建相机时检查/请求相机权限，useMicrophone=true 时同时请求麦克风权限；麦克风连接时采集、断开时停止。本地预览音量与远端音量范围 0…1，初值及预置应用时机按 iOS；图片没有音轨时保存音量设置但不制造音频。
 
-模型 x2_0 的默认相机规格为 832×1472@24；图片默认按 MediaService 输入规则计算，24 fps。显式规格 width/height 必须为正偶数、fps 为正整数。尺寸计算沿用 iOS 的 600000…1280000 像素、32 对齐、越界候选选择和舍入规则，建立两端共用输入/期望结果样例。
+模型 x2_0 的默认相机规格为 832×1472@24；图片默认按 MediaService 输入规则计算，24 fps。相机显式规格 width/height 必须为正偶数、fps 为正整数。图片与当前 iOS 一致，先将原图或请求规格的正数尺寸按模型规则解析为有效偶数，保留请求 fps（正整数）。尺寸计算沿用 iOS 的 600000…1280000 像素、32 对齐、越界候选选择和舍入规则，建立两端共用输入/期望结果样例。
 
 RealtimeVideoTrack 保持稳定对象身份，videoFormat/position 是动态只读 getter；switchCamera 更新同一轨道元数据。React 显示层通过内部订阅更新，不能仅依赖对象引用变化触发重绘。流只能由对应 Manager 创建，不允许结构相同的对象冒充；内部记录 owner、来源和生命周期版本，不新增公开 kind 字段。
 

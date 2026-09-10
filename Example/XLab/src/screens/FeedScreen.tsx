@@ -1,4 +1,4 @@
-import { useState, type ComponentProps } from 'react';
+import { useEffect, useRef, useState, type ComponentProps } from 'react';
 import {
   Alert,
   Image,
@@ -11,13 +11,18 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { launchImageLibrary } from 'react-native-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { XmaxEnvironment, XmaxSDKInfo } from '@xmax/react-native-sdk';
 import { colors } from '../theme/tokens';
 import { StorageFeatureCard } from '../components/StorageFeatureCard';
+import { FeedPipelineCard } from '../components/FeedPipelineCard';
+import { FeedFeatureCard } from '../components/FeedFeatureCard';
+import type { SavedConfiguration } from '../configuration/ConfigurationStore';
 
 // Match FeedTypography.visualScale in the UIKit XLab reference.
 const font = (size: number) => size * 1.15;
+
 const environments = [
   { value: XmaxEnvironment.china, label: '国内' },
   { value: XmaxEnvironment.global, label: '海外' },
@@ -43,20 +48,82 @@ async function openAPIKeyPage() {
   }
 }
 
+/**
+ * Displays SDK examples and passes the selected credentials and environment
+ * to the chosen feature. Its parent owns secure persistence for each environment.
+ */
 export function FeedScreen({
   onCamera,
+  onImage,
   onStorage,
-  initialConfiguration,
+  configuration,
+  onAPIKeyChange,
+  onEnvironmentChange,
+  onRetrySave,
 }: {
   onCamera: (apiKey: string, environment: XmaxEnvironment) => void;
+  onImage: (
+    apiKey: string,
+    environment: XmaxEnvironment,
+    fileURL: string,
+  ) => void;
   onStorage: (apiKey: string, environment: XmaxEnvironment) => void;
-  initialConfiguration: { apiKey: string; environment: XmaxEnvironment };
+  configuration: SavedConfiguration;
+  onAPIKeyChange: (value: string) => void;
+  onEnvironmentChange: (environment: XmaxEnvironment) => void;
+  onRetrySave: () => void;
 }) {
-  const [apiKey, setAPIKey] = useState(initialConfiguration.apiKey);
+  const { environment } = configuration;
+  const apiKey = configuration.keys[environment];
   const [visible, setVisible] = useState(false);
-  const [environment, setEnvironment] = useState(
-    initialConfiguration.environment,
-  );
+
+  const pickerOpen = useRef(false),
+    mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  /** Selects an input image; the destination owns preparation and RTC resources. */
+  async function openImage() {
+    if (pickerOpen.current) return;
+    if (!apiKey.trim()) {
+      Alert.alert('请输入 API Key', '填写 API Key 后再选择图片。');
+      return;
+    }
+
+    pickerOpen.current = true;
+    try {
+      const result = await launchImageLibrary({
+        mediaType: 'photo',
+        selectionLimit: 1,
+        includeBase64: false,
+        assetRepresentationMode: 'current',
+      });
+
+      if (!mounted.current || result.didCancel) return;
+      if (result.errorCode)
+        throw new Error(result.errorMessage || '无法读取所选图片');
+
+      const fileURL = result.assets?.[0]?.uri;
+
+      if (!fileURL) throw new Error('未获取到图片文件');
+      onImage(apiKey.trim(), environment, fileURL);
+    } catch (error) {
+      if (mounted.current)
+        Alert.alert(
+          '无法选择图片',
+          error instanceof Error ? error.message : '请重试',
+        );
+    } finally {
+      pickerOpen.current = false;
+    }
+  }
+
   return (
     <View style={styles.page}>
       <View pointerEvents="none" style={styles.blueGlow} />
@@ -138,7 +205,10 @@ export function FeedScreen({
                       accessibilityRole="radio"
                       accessibilityLabel={`${label}环境`}
                       accessibilityState={{ checked: environment === value }}
-                      onPress={() => setEnvironment(value)}
+                      onPress={() => {
+                        setVisible(false);
+                        onEnvironmentChange(value);
+                      }}
                       hitSlop={{ top: 8, bottom: 8 }}
                       style={[
                         styles.environment,
@@ -160,12 +230,13 @@ export function FeedScreen({
               </View>
               <View style={styles.passwordField}>
                 <TextInput
+                  key={environment}
                   accessibilityLabel="API Key"
                   style={styles.input}
                   placeholder="输入 Xmax API Key"
                   placeholderTextColor="rgba(96,112,128,0.5)"
                   value={apiKey}
-                  onChangeText={setAPIKey}
+                  onChangeText={onAPIKeyChange}
                   secureTextEntry={!visible}
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -202,6 +273,23 @@ export function FeedScreen({
                   </FeedText>
                 </Pressable>
               </View>
+              {configuration.error && (
+                <View style={styles.helpRow}>
+                  <FeedText
+                    style={styles.helpText}
+                    accessibilityLiveRegion="polite"
+                  >
+                    {configuration.error}
+                  </FeedText>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={onRetrySave}
+                    hitSlop={8}
+                  >
+                    <FeedText style={styles.helpLink}>重试</FeedText>
+                  </Pressable>
+                </View>
+              )}
             </View>
             <View style={styles.divider} />
             <View style={styles.model}>
@@ -224,59 +312,48 @@ export function FeedScreen({
               选择一种内容输入方式
             </FeedText>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="运行摄像头实时流"
-            style={({ pressed }) => [
-              styles.pipeline,
-              pressed && styles.pressed,
-            ]}
-            onPress={() => onCamera(apiKey.trim(), environment)}
-          >
-            <View pointerEvents="none" style={styles.pipelineGlow} />
-            <View pointerEvents="none" style={styles.pipelineStripe} />
-            <FeedText accessible={false} style={styles.sequence}>
-              01
-            </FeedText>
-            <View style={styles.row}>
-              <View style={styles.modeRow}>
-                <View style={styles.modeDot} />
-                <FeedText style={styles.mode}>MODE_01 / CAMERA</FeedText>
-              </View>
-              <View style={styles.ready}>
-                <View style={styles.readyDot} />
-                <FeedText style={styles.pillText}>READY</FeedText>
-              </View>
-            </View>
-            <FeedText style={styles.pipelineTitle}>摄像头实时流</FeedText>
-            <FeedText style={styles.pipelineSubtitle}>
-              实时采集摄像头画面，持续驱动视频生成。
-            </FeedText>
-            <View style={styles.actions}>
-              <View style={styles.capabilityBox}>
-                <FeedText
-                  style={styles.capability}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.78}
-                >
-                  createLocalCameraStream()
-                </FeedText>
-              </View>
-              <View style={styles.runButton}>
-                <FeedText style={styles.runText}>运行</FeedText>
-              </View>
-            </View>
-          </Pressable>
+          <View style={styles.cards}>
+            <FeedPipelineCard
+              sequence="01"
+              mode="MODE_01 / CAMERA"
+              accentColor={colors.accent}
+              title="摄像头实时流"
+              subtitle="实时采集摄像头画面，持续驱动视频生成。"
+              capability="createLocalCameraStream()"
+              onPress={() => onCamera(apiKey.trim(), environment)}
+            />
+            <FeedPipelineCard
+              sequence="02"
+              mode="MODE_02 / IMAGE.FILE"
+              accentColor={colors.image}
+              title="图片生成管线"
+              subtitle="选择本地图片，让静态画面持续流动起来。"
+              capability="createLocalImageStream()"
+              onPress={openImage}
+            />
+          </View>
           <View style={styles.section}>
             <FeedText style={styles.sectionTitle}>SDK FEATURES</FeedText>
             <FeedText style={styles.sectionSubtitle}>
               更多能力与接入示例
             </FeedText>
           </View>
-          <StorageFeatureCard
-            onPress={() => onStorage(apiKey.trim(), environment)}
-          />
+          <View style={styles.cards}>
+            <FeedFeatureCard
+              category="SDK RENDERING / TRAJECTORY"
+              watermark="FX"
+              accentColor={colors.trajectory}
+              icon={require('../assets/feed/trajectory.png')}
+              iconLabel="RENDER"
+              title="自定义轨迹渲染"
+              subtitle="使用自定义 Renderer 绘制交互轨迹。"
+              tags={['CANVAS', 'MULTI-TOUCH', 'CUSTOM EFFECT']}
+              highlightedTag="CUSTOM EFFECT"
+            />
+            <StorageFeatureCard
+              onPress={() => onStorage(apiKey.trim(), environment)}
+            />
+          </View>
           <View style={styles.footer}>
             <View style={styles.footerDivider} />
             <FeedText style={styles.copyright}>
@@ -545,110 +622,7 @@ const styles = StyleSheet.create({
     color: '#C6D0DD',
   },
   sectionSubtitle: { fontSize: font(11), color: '#667384' },
-  pipeline: {
-    paddingHorizontal: 18,
-    paddingVertical: 17,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.13)',
-    backgroundImage:
-      'linear-gradient(135deg, rgba(20,27,37,0.94), rgba(12,17,24,0.94))',
-    boxShadow: '0 9px 20px rgba(0,0,0,0.52)',
-    overflow: 'hidden',
-  },
-  pipelineGlow: {
-    position: 'absolute',
-    width: 112,
-    height: 112,
-    borderRadius: 56,
-    right: -38,
-    top: -46,
-    backgroundColor: 'rgba(142,240,200,0.10)',
-  },
-  pipelineStripe: {
-    position: 'absolute',
-    left: 0,
-    top: 22,
-    width: 3,
-    height: 70,
-    borderRadius: 1.5,
-    backgroundColor: colors.accent,
-  },
-  sequence: {
-    position: 'absolute',
-    right: 17,
-    top: 5,
-    fontSize: font(54),
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.032)',
-  },
-  modeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  modeDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: colors.accent,
-    boxShadow: '0 0 7px rgba(142,240,200,0.8)',
-  },
-  mode: {
-    fontSize: font(9),
-    fontWeight: '700',
-    color: '#9AA7B7',
-    letterSpacing: 0.8,
-  },
-  ready: {
-    height: 25,
-    paddingHorizontal: 9,
-    borderRadius: 12.5,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.09)',
-    backgroundColor: 'rgba(255,255,255,0.047)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  readyDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: colors.accent,
-  },
-  pipelineTitle: {
-    fontSize: font(21),
-    fontWeight: '700',
-    color: colors.primary,
-    marginTop: 17,
-    marginBottom: 7,
-  },
-  pipelineSubtitle: {
-    fontSize: font(12),
-    lineHeight: 18,
-    color: colors.secondary,
-  },
-  actions: { flexDirection: 'row', gap: 10, marginTop: 18 },
-  capabilityBox: {
-    flex: 1,
-    height: 36,
-    justifyContent: 'center',
-    paddingLeft: 11,
-    paddingRight: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.086)',
-    backgroundColor: 'rgba(8,12,18,0.4)',
-  },
-  capability: { fontSize: font(9), fontWeight: '500', color: '#B8C3D1' },
-  runButton: {
-    width: 82,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 10,
-    backgroundColor: colors.accent,
-    boxShadow: '0 4px 10px rgba(0,0,0,0.25)',
-  },
-  runText: { fontSize: font(11), fontWeight: '700', color: '#08110E' },
-  pressed: { opacity: 0.75 },
+  cards: { gap: 14 },
   footer: { alignItems: 'center', marginTop: 10, paddingBottom: 32 },
   footerDivider: {
     width: 36,

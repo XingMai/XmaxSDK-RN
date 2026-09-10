@@ -1,3 +1,7 @@
+/**
+ * Stable error identifiers used by synchronous throws and rejected SDK
+ * operations.
+ */
 export enum XmaxErrorCode {
   invalidAPIKey = 'INVALID_API_KEY',
   invalidConfiguration = 'INVALID_CONFIGURATION',
@@ -15,16 +19,43 @@ export enum XmaxErrorCode {
   downloadError = 'DOWNLOAD_ERROR',
   unsafeImage = 'UNSAFE_IMAGE',
 }
+
+/**
+ * Whether an error is classified as recoverable or fatal to its operation.
+ */
 export enum XmaxErrorSeverity {
   recoverable = 'RECOVERABLE',
   fatal = 'FATAL',
 }
+
+/**
+ * An SDK failure with a stable code and optional API/HTTP metadata.
+ *
+ * Native or unknown failures can be normalized with XmaxError.from().
+ */
 export class XmaxError extends Error {
   readonly name = 'XmaxError';
+
+  /**
+   * The stable SDK error identifier.
+   */
   readonly code: XmaxErrorCode;
+
+  /**
+   * The failure classification, inferred from code unless explicitly provided.
+   */
   readonly severity: XmaxErrorSeverity;
+
+  /**
+   * The service response code, or null when unavailable.
+   */
   readonly apiCode: number | null;
+
+  /**
+   * The HTTP response status, or null when unavailable.
+   */
   readonly httpStatus: number | null;
+
   constructor(options: {
     code: XmaxErrorCode;
     message: string;
@@ -48,17 +79,25 @@ export class XmaxError extends Error {
     this.apiCode = options.apiCode ?? null;
     this.httpStatus = options.httpStatus ?? null;
   }
+
+  /**
+   * Preserves an existing XmaxError, or wraps an unknown failure as
+   * INTERNAL_ERROR.
+   */
   static from(error: unknown): XmaxError {
     if (error instanceof XmaxError) return error;
+
     return new XmaxError({
       code: XmaxErrorCode.internalError,
       message: error instanceof Error ? error.message : String(error),
     });
   }
 }
+
 export function invalid(message: string): XmaxError {
   return new XmaxError({ code: XmaxErrorCode.invalidConfiguration, message });
 }
+
 export function cancelledError(): XmaxError {
   return new XmaxError({
     code: XmaxErrorCode.cancelled,

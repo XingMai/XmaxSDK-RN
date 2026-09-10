@@ -10,15 +10,24 @@ import type {
 import { RenderController } from '../../Render/RenderController';
 import { RoomController } from '../../Stream/Room/RoomController';
 import { ensureActive, repeatHeartbeat } from '../../Foundation/Runtime/Async';
+
+/**
+ * Owns the server session, RTC connection and session heartbeat.
+ *
+ * Reclaims sessions that arrive after cancellation or contain unusable join
+ * data.
+ */
 export class XmaxRealtimeConnectionManager {
   session: RealtimeSession | null = null;
   remoteStream: RealtimeMediaStream | null = null;
   private stopHeartbeat: (() => void) | null = null;
+
   constructor(
     private readonly service: RealtimeSessionService,
     private readonly room: RoomController,
     private readonly render: RenderController,
   ) {}
+
   async connect(
     model: RealtimeModel,
     format: RealtimeVideoFormat,
@@ -28,6 +37,7 @@ export class XmaxRealtimeConnectionManager {
   ): Promise<RealtimeMediaStream> {
     // POST is intentionally allowed to settle after cancellation so its session can be reclaimed.
     const session = await this.service.createSession(model);
+
     try {
       ensureActive(signal);
       await this.room.join(session.connection, microphone, signal);
@@ -50,6 +60,7 @@ export class XmaxRealtimeConnectionManager {
           if (this.session === session) onFailure(error);
         },
       );
+
       return this.remoteStream;
     } catch (error) {
       try {
@@ -60,13 +71,16 @@ export class XmaxRealtimeConnectionManager {
       throw error;
     }
   }
+
   async disconnect(): Promise<void> {
     const session = this.session;
+
     this.session = null;
     this.remoteStream = null;
     this.stopHeartbeat?.();
     this.stopHeartbeat = null;
     this.render.invalidate(false);
+
     try {
       this.room.leave();
     } finally {

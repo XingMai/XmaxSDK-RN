@@ -290,7 +290,10 @@ class FakeRtc {
   emit(event) {
     for (const listener of [...this.listeners]) listener(event);
   }
-  async permissions() {}
+  permissionCalls = 0;
+  imagePath = null;
+  async permissions() { this.permissionCalls++; }
+  startImage(path) { this.imagePath = path; }
   async open() {
     this.closed = false;
   }
@@ -309,12 +312,28 @@ class FakeRtc {
   leave() {}
   async close() {
     this.camera = false;
+    this.imagePath = null;
     this.closed = true;
     this.closes++;
   }
 }
 mock.module(require.resolve('../lib/commonjs/Foundation/RTC/RtcManager.js'), {
   namedExports: { RtcManager: FakeRtc },
+});
+class FakeImages {
+  static instances = [];
+  removed = [];
+  prepared = [];
+  constructor() { FakeImages.instances.push(this); }
+  async size() { return { width: 1010, height: 770 }; }
+  async prepare(_source, size) {
+    this.prepared.push(size);
+    return 'file:///cache/prepared%20image.jpg';
+  }
+  async remove(path) { this.removed.push(path); }
+}
+mock.module(require.resolve('../lib/commonjs/Foundation/Media/ImageManager.js'), {
+  namedExports: { ImageManager: FakeImages },
 });
 const {
   XmaxRealtimeManager,
@@ -570,4 +589,92 @@ test('close invalidates a camera switch while its native mirror request is pendi
   gate.resolve();
   await Promise.all([closing, rejected]);
   assert.equal(manager.currentState.connectionState, 'Disconnected');
+});
+
+
+test('image pipeline uses prepared dimensions/path, no camera permissions, and correct source stops', async t => {
+  t.mock.method(globalThis, 'fetch', async (_url, init) =>
+    response(init.method === 'POST' ? sessionPayload : {}),
+  );
+  const manager = createManager();
+  const local = await manager.createLocalImageStream({ fileURL: 'file:///original.heic' });
+  const rtc = FakeRtc.instances.at(-1), images = FakeImages.instances.at(-1);
+  assert.deepEqual(local.videoTrack.videoFormat, { width: 1024, height: 768, fps: 24 });
+  assert.equal(local.videoTrack.position, null);
+  assert.equal(rtc.imagePath, '/cache/prepared image.jpg');
+  assert.equal(rtc.permissionCalls, 0);
+  assert.equal(rtc.camera, false);
+  await manager.stopLocalCameraStream();
+  assert(local.videoTrack.videoFormat);
+  await assert.rejects(manager.createLocalCameraStream(), { code: 'INVALID_CONFIGURATION' });
+  await assert.rejects(manager.createLocalImageStream({ fileURL: '/second.jpg' }), { code: 'INVALID_CONFIGURATION' });
+  await manager.connect({ localStream: local });
+  const generation = manager.startGeneration({ context: { prompt: 'animate', referencePath: 'https://example.test/ref.jpg' } });
+  await nextTurn();
+  const start = rtc.packets.find(p => p.event === 'start');
+  assert.deepEqual(start.params.size, [1024, 768]);
+  assert.equal(start.params.ref_image_path, 'https://example.test/ref.jpg');
+  rtc.emit({ type: 'sei', stream: { roomID: 'room-1', userID: 'bot-1' }, message: start.uid });
+  await generation;
+  await assert.rejects(manager.switchCamera(), { code: 'INVALID_CONFIGURATION' });
+  await assert.rejects(manager.stopLocalImageStream(), { code: 'INVALID_CONFIGURATION' });
+  assert.equal(manager.currentState.taskID, start.uid);
+  await manager.disconnect();
+  assert(local.videoTrack.videoFormat);
+  assert.equal(images.removed.length, 0);
+  await manager.stopLocalImageStream();
+  assert.equal(local.videoTrack.videoFormat, null);
+  assert.equal(rtc.imagePath, null);
+  assert.deepEqual(images.removed, ['file:///cache/prepared%20image.jpg']);
+  const camera = await manager.createLocalCameraStream();
+  await manager.stopLocalImageStream();
+  assert(camera.videoTrack.videoFormat);
+  await manager.close();
+});
+
+test('close during image preparation removes late file and never starts image RTC', async t => {
+  const manager = createManager();
+  const images = FakeImages.instances.at(-1), rtc = FakeRtc.instances.at(-1);
+  const preparation = defer();
+  t.mock.method(images, 'prepare', () => preparation.promise);
+  const creating = manager.createLocalImageStream({ fileURL: '/original.png' });
+  const rejected = assert.rejects(creating, { code: 'CANCELLED' });
+  await nextTurn();
+  const closing = manager.close();
+  preparation.resolve('file:///late.jpg');
+  await Promise.all([closing, rejected]);
+  assert.equal(rtc.imagePath, null);
+  assert.deepEqual(images.removed, ['file:///late.jpg']);
+  assert.equal(lifecycleListeners.size, 0);
+  images.prepare.mock.restore();
+  const local = await manager.createLocalImageStream({ fileURL: '/replacement.png' });
+  assert(local.videoTrack.videoFormat);
+  await manager.close();
+});
+
+test('image RTC failure removes only prepared copy, invalid fps never prepares', async t => {
+  const manager = createManager();
+  const images = FakeImages.instances.at(-1), rtc = FakeRtc.instances.at(-1);
+  await assert.rejects(manager.createLocalImageStream({ fileURL: '/image.jpg', videoFormat: { width: 640, height: 480, fps: 0 } }), { code: 'INVALID_CONFIGURATION' });
+  assert.equal(images.prepared.length, 0);
+  t.mock.method(rtc, 'startImage', () => { throw new Error('image rejected'); });
+  await assert.rejects(manager.createLocalImageStream({ fileURL: '/image.jpg' }), /image rejected/);
+  assert.deepEqual(images.removed, ['file:///cache/prepared%20image.jpg']);
+  rtc.startImage.mock.restore();
+  const local = await manager.createLocalImageStream({ fileURL: '/image.jpg', videoFormat: { width: 641, height: 481, fps: 15 } });
+  assert.deepEqual(local.videoTrack.videoFormat, { width: 896, height: 672, fps: 15 });
+  await manager.close();
+});
+
+test('background destroys image source, removes prepared file, and foreground does not generate', async () => {
+  const manager = createManager();
+  const local = await manager.createLocalImageStream({ fileURL: '/image.jpg' });
+  const rtc = FakeRtc.instances.at(-1), images = FakeImages.instances.at(-1);
+  for (const listener of [...lifecycleListeners]) listener('background');
+  await manager.close();
+  assert.equal(local.videoTrack.videoFormat, null);
+  assert.equal(rtc.imagePath, null);
+  assert.equal(images.removed.length, 1);
+  assert.equal(rtc.packets.length, 0);
+  assert.equal(lifecycleListeners.size, 0);
 });

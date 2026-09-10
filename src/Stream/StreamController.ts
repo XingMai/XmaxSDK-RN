@@ -7,11 +7,17 @@ import { waitFor } from '../Foundation/Runtime/Async';
 import { RoomController } from './Room/RoomController';
 import { invalid } from '../Foundation/Errors/XmaxError';
 import { matchesTaskSEI } from './Room/TaskConfirmation';
+
+/**
+ * Sends generation commands and waits for matching task, room and bot
+ * confirmation.
+ */
 export class StreamController {
   constructor(
     private readonly rtc: RtcManager,
     readonly room: RoomController,
   ) {}
+
   async beginGeneration(
     taskID: string,
     format: RealtimeVideoFormat,
@@ -19,7 +25,9 @@ export class StreamController {
     signal: AbortSignal,
   ): Promise<RemoteStream> {
     const connection = this.room.connection;
+
     if (!connection) throw invalid('Connect before starting generation');
+
     return waitFor<RemoteStream>(
       (resolve, reject) => {
         const off = this.rtc.onEvent(event => {
@@ -35,13 +43,16 @@ export class StreamController {
             return;
           // Exact task identity, optionally followed by the server's numeric frame index.
           if (!matchesTaskSEI(taskID, event.message)) return;
+
           resolve(event.stream);
         });
+
         try {
           this.room.send('start', taskID, format, context);
         } catch (error) {
           reject(error);
         }
+
         return off;
       },
       signal,
@@ -49,6 +60,7 @@ export class StreamController {
       'Generation confirmation',
     );
   }
+
   updateGeneration(
     taskID: string,
     format: RealtimeVideoFormat,
@@ -56,6 +68,7 @@ export class StreamController {
   ): void {
     this.room.send('change_condition', taskID, format, context);
   }
+
   stopGeneration(taskID: string): void {
     if (this.room.connection) this.room.send('stop', taskID);
   }

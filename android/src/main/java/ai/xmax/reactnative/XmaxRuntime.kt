@@ -17,6 +17,7 @@ import java.util.UUID
 class XmaxRuntime(private val context: ReactApplicationContext) : NativeXmaxRuntimeSpec(context), Application.ActivityLifecycleCallbacks {
   companion object { const val NAME = "XmaxRuntime" }
   private val app = context.applicationContext as Application
+  private val images = XmaxImageManager(context)
   private val main = Handler(Looper.getMainLooper())
   @Volatile private var started = if (context.lifecycleState == LifecycleState.RESUMED) 1 else 0
   private var owner: String? = null
@@ -32,6 +33,12 @@ class XmaxRuntime(private val context: ReactApplicationContext) : NativeXmaxRunt
   override fun randomUUID() = UUID.randomUUID().toString()
   override fun runtimeInfo() = JSONObject().put("platform", "android").put("os_version", Build.VERSION.RELEASE).put("device_model", Build.MODEL).toString()
   override fun requestPermissions(useMicrophone: Boolean, promise: Promise) { promise.resolve("android-use-PermissionsAndroid") }
+  override fun imageInfo(fileURL: String, promise: Promise) = images.info(fileURL, promise)
+
+  override fun prepareImage(fileURL: String, width: Double, height: Double, promise: Promise) = images.prepare(fileURL, width, height, promise)
+
+  override fun removePreparedImage(fileURL: String, promise: Promise) = images.remove(fileURL, promise)
+
   @Synchronized private fun stopOwnedEngine() {
     if (owner != null && active) { active = false; RTCVideo.destroyRTCVideo() }
   }
@@ -39,6 +46,7 @@ class XmaxRuntime(private val context: ReactApplicationContext) : NativeXmaxRunt
     app.unregisterActivityLifecycleCallbacks(this)
     main.removeCallbacksAndMessages(null)
     stopOwnedEngine()
+    images.invalidate()
     super.invalidate()
   }
   override fun onActivityStarted(activity: Activity) { started += 1 }

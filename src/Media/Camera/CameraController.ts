@@ -15,13 +15,20 @@ import {
   resolveBitrates,
   validateVideoFormat,
 } from '../../Stream/Encoding/EncodingController';
+
+/**
+ * Owns local camera capture and updates the existing track when the camera
+ * switches.
+ */
 export class CameraController {
   stream: RealtimeMediaStream | null = null;
   useMicrophone = false;
+
   constructor(
     private readonly rtc: RtcManager,
     private readonly render: RenderController,
   ) {}
+
   async create(
     options: CameraStreamOptions,
     signal: AbortSignal,
@@ -30,22 +37,28 @@ export class CameraController {
       throw invalid(
         'Stop the current local camera stream before creating a new one',
       );
+
     const format = Object.freeze({
       ...(options.videoFormat ?? defaultCameraVideoFormat),
     });
     const position = options.position ?? CameraPosition.front;
+
     validateVideoFormat(format);
     if (!Object.values(CameraPosition).includes(position))
       throw invalid('Invalid camera position');
+
     await abortable(
       this.rtc.permissions(options.useMicrophone ?? false),
       signal,
     );
     ensureActive(signal);
+
     try {
       await this.rtc.open(signal);
       ensureActive(signal);
+
       const bitrates = resolveBitrates(format);
+
       await this.rtc.configureEncoding(
         format,
         bitrates.minimum,
@@ -56,25 +69,31 @@ export class CameraController {
       ensureActive(signal);
       this.useMicrophone = options.useMicrophone ?? false;
       this.stream = this.render.create(true, format, position);
+
       return this.stream;
     } catch (error) {
       await this.rtc.close();
       throw error;
     }
   }
+
   async switch(signal: AbortSignal): Promise<RealtimeMediaStream> {
     if (!this.stream) throw invalid('Create a local camera stream first');
+
     const binding = this.render.requireLocal(this.stream);
     const position =
       binding.position === CameraPosition.front
         ? CameraPosition.back
         : CameraPosition.front;
+
     await this.rtc.switchCamera(position);
     ensureActive(signal);
     binding.position = position;
     refreshBinding(binding);
+
     return this.stream;
   }
+
   async close(): Promise<void> {
     this.stream = null;
     this.useMicrophone = false;

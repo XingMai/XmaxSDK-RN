@@ -2,7 +2,11 @@
 
 RN 0.87.1 / React 19.2.3，TypeScript 业务 + 火山 RTC RN + 必要原生适配。工程分层和关键 API 名称对齐 iOS XmaxSDK，不依赖其 Pod。
 
-当前实现摄像头预览 → session / RTC 连接 → 提示词生成 → 远端显示 → 断开 / 关闭，以及前后台清理。XLab 有首页配置、摄像头自由提示词页和对齐 iOS 的存储服务页。存储已接通图片/视频选择、预览、COS 上传、安全检测、进度和结果复制，SDK 同时提供下载。**原生编译与逻辑测试不等于真机云端验收**，实际结果与剩余缺口见 [摄像头实现记录](docs/camera-implementation.md) 和 [存储实现记录](docs/storage-implementation.md)。图片生成、轨迹和 Expo 暂缓。
+当前实现摄像头/图片预览 → session / RTC 连接 → 提示词生成 → 远端显示 → 断开 / 关闭，以及前后台清理。XLab 有首页配置、摄像头/图片生成页（预设参考图及自由提示词）和对齐 iOS 的存储服务页。存储已接通图片/视频选择、预览、COS 上传、安全检测、进度和结果复制，SDK 同时提供下载。**原生编译与逻辑测试不等于真机云端验收**，实际结果与剩余缺口见 [摄像头实现记录](docs/camera-implementation.md) 、[图片实现记录](docs/image-implementation.md) 和 [存储实现记录](docs/storage-implementation.md)。轨迹和 Expo 暂缓。
+
+XLab 会分别安全保存国内与海外 API Key，并恢复上次选择的环境；清空输入框可删除当前环境的 Key。此行为仅属于示例 App，SDK 本身不持久化 API Key。
+
+XLab 使用原生导航栈，进入功能页后返回会保留首页滚动位置；路由配置与退出清理见 [页面导航](docs/xlab-navigation.md)。
 
 ## 安装与运行
 
