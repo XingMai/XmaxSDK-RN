@@ -72,6 +72,7 @@ SDK 保留 strict、noUncheckedIndexedAccess、exactOptionalPropertyTypes、skip
 
 ## 文档
 
+- [RN CI/CD 与 npm 发版流程](.cicd/README.md)
 - [摄像头实现与验收](docs/camera-implementation.md)
 - [存储实现与验收](docs/storage-implementation.md)
 - [工程标准](docs/engineering-baseline.md) / [架构](docs/architecture.md)
