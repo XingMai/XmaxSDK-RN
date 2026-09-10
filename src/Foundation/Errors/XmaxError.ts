@@ -11,6 +11,9 @@ export enum XmaxErrorCode {
   microphonePermissionDenied = 'MICROPHONE_PERMISSION_DENIED',
   cancelled = 'CANCELLED',
   timeout = 'TIMEOUT',
+  uploadError = 'UPLOAD_ERROR',
+  downloadError = 'DOWNLOAD_ERROR',
+  unsafeImage = 'UNSAFE_IMAGE',
 }
 export enum XmaxErrorSeverity {
   recoverable = 'RECOVERABLE',

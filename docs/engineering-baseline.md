@@ -1,6 +1,6 @@
 # React Native 工程标准
 
-2026-09-10。工程目标与发布验收标准。当前已实现摄像头线路的 TS 业务和必要原生适配，安装火山 RTC；COS、图片与轨迹尚未实施。iOS arm64 Debug/Release 已编译通过，真机媒体与最低系统仍未验收。每项实际结果见 [camera-implementation.md](camera-implementation.md)，不能把目标版本表直接当作支持承诺。
+2026-09-10。工程目标与发布验收标准。当前已实现摄像头和存储线路的 TS 业务及必要原生适配，安装火山 RTC、腾讯 COS 和文件传输依赖；图片生成与轨迹尚未实施。iOS arm64 Debug/Release 已编译通过，真机媒体与最低系统仍未验收。每项实际结果见 [camera-implementation.md](camera-implementation.md) 和 [storage-implementation.md](storage-implementation.md)，不能把目标版本表直接当作支持承诺。
 
 ## 1. 产品与架构
 
@@ -51,6 +51,10 @@ RN 0.87.1 保持开发基线。Expo 暂不建工程、不提供 config plugin，
 | 腾讯 RN | `react-native-cos-sdk-nobeacon` **1.3.0**，仅选此变体 |
 | 腾讯 iOS | 专用 podspec 的 QCloudCOSXML/Slim **6.5.5** |
 | 腾讯 Android | cos-android-nobeacon **5.9.52** |
+| 文件传输（SDK peer） | `react-native-blob-util` **0.24.10** |
+| XLab 文件选择 | `react-native-image-picker` **8.2.1** |
+| XLab 视频预览 | `react-native-video` **6.19.2** |
+| XLab 剪贴板 | `@react-native-clipboard/clipboard` **1.16.3** |
 
 来源为 [已核对发布包及 SHA-256](vendor-rn-audit.md)。原生版本由 RN 包传递引入，不回退到参考 Xmax 的 3.60.106.x / COS 6.5.7，不同时安装两套 COS RN 变体。
 
@@ -62,7 +66,7 @@ SDK 不要求消费者手改 node_modules。开发期补丁可固定在 vendor-p
 
 ## 5. 当前发布包与后续扩展
 
-当前导出 XmaxClient、摄像头实时协议、视频组件及 MediaServicing 尺寸计算；图片、存储和交互设计不提供空实现。输出 lib/module、lib/commonjs、lib/typescript，Example 从 SDK 包名导入。根包 private=true，暂不发布到 npm。发布前完成厂商修订包、许可证、干净宿主安装和真机验收。
+当前导出 XmaxClient、摄像头实时协议、视频组件、MediaServicing 尺寸计算及 XmaxStorageManaging 图片/视频上传下载；图片生成和交互设计不提供空实现。输出 lib/module、lib/commonjs、lib/typescript，Example 从 SDK 包名导入。根包 private=true，暂不发布到 npm。发布前完成厂商修订包、许可证、干净宿主安装和真机验收。
 
 Expo 暂不创建独立宿主或 config plugin；后续如果原生配置需要自动生成再增加。当前工程不依赖 Expo。
 

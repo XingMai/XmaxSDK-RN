@@ -1,6 +1,6 @@
 # FeedScreen 样式对齐验收
 
-2026-09-10。范围仅首页，当前保留摄像头线路。
+2026-09-10。下方首页记录来自摄像头阶段；新增存储入口与页面记录见本文末尾。
 
 ## 参考
 
@@ -40,3 +40,16 @@ Android Pixel_10 模拟器，API 37 / 420 dpi，RN 0.87.1 Debug：
 `npm run typecheck`、`npm run lint` 通过，修改文件通过 Prettier 检查。未增加原生依赖，不需要重新编译宿主即可通过 Metro 更新。
 
 本次未做 iOS 真机视觉验收：当前 RTC 二进制缺少 Apple Silicon iOS 模拟器切片。Android 与 iOS 字体栅格和系统安全区存在平台差异；不能将 Android 截图视为 iOS 真机验证结果。
+
+## 存储入口与页面
+
+2026-09-10，增加 `StorageFeatureCard` 与 `StorageScreen`，参考当前 iOS FeedFeatureCard 和 XLStorage/StorageViewController。参考文件指纹、依赖和完整验证边界见 `../../../docs/storage-implementation.md`。
+
+同一 Android API 37 模拟器、1080 × 2424 / 420 dpi 的开发截图：
+
+- `storage-android-feed.png`：首页 SDK FEATURES、橙色存储卡片、IMAGE/VIDEO/REMOTE URL 标签和进入按钮。
+- `storage-android-empty.png`：存储页面顶部栏、STORAGE PIPELINE、STEP 01、系统选择入口和空元数据。
+
+已实际检查入口/返回、系统图片选择、图片预览及尺寸/大小展示、空 API Key 上传提示。视频测试素材的异常元数据被选择器拒绝并显示错误，尚未完成有效视频的运行验收；没有将该错误截图记作成功基线。最后按用户要求停止运行测试，剩余有效视频、上传结果/复制、窄屏与 iPhone 交互由用户验收。
+
+静态检查及 iOS/Android Debug、Release 编译均通过。此次新增 COS、文件选择、视频预览和剪贴板原生依赖，需要重新编译安装宿主。

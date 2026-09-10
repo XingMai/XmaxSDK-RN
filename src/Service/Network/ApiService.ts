@@ -10,7 +10,7 @@ export function nonEmpty(value: unknown): string | null {
 }
 export interface ApiServicing {
   request(
-    method: 'POST' | 'PUT' | 'DELETE',
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE',
     path: string,
     body?: unknown,
   ): Promise<unknown>;
@@ -23,7 +23,7 @@ export class ApiService implements ApiServicing {
     private readonly transport: typeof fetch = fetch,
   ) {}
   async request(
-    method: 'POST' | 'PUT' | 'DELETE',
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE',
     path: string,
     body?: unknown,
   ): Promise<unknown> {

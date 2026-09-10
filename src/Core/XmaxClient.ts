@@ -1,4 +1,14 @@
-import { XmaxEnvironment, type XmaxConfiguration } from './XmaxConfiguration';
+import { XmaxStorageManager } from './Storage/XmaxStorageManager';
+import type { XmaxStorageManaging } from './Storage/XmaxStorageManaging';
+import { StorageService } from '../Service/Storage/StorageService';
+import { StorageManager } from '../Foundation/Storage/StorageManager';
+import { ApiService } from '../Service/Network/ApiService';
+import NativeRuntime from '../Foundation/Native/NativeXmaxRuntime';
+import {
+  apiBaseURLs,
+  XmaxEnvironment,
+  type XmaxConfiguration,
+} from './XmaxConfiguration';
 import {
   RealtimeModel,
   type RealtimeConfiguration,
@@ -34,6 +44,24 @@ export class XmaxClient {
     if (options.model !== RealtimeModel.x2_0)
       throw invalid('Unsupported realtime model');
     return new XmaxRealtimeManager(this.configuration, options);
+  }
+  createStorageManager(): XmaxStorageManaging {
+    if (!this.configuration.apiKey) throw invalid('API key cannot be empty');
+    const runtime = {
+      ...JSON.parse(NativeRuntime.runtimeInfo()),
+      sdk_version: '0.0.1',
+    };
+    return new XmaxStorageManager(
+      new StorageService(
+        new ApiService(
+          this.configuration.apiKey,
+          apiBaseURLs[this.configuration.environment],
+          runtime,
+        ),
+        new StorageManager(),
+        () => NativeRuntime.randomUUID(),
+      ),
+    );
   }
   createMediaService(
     model: RealtimeModel = RealtimeModel.x2_0,

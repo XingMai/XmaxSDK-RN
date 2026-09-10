@@ -25,3 +25,13 @@ export {
   XmaxRealtimeVideo,
   type XmaxRealtimeVideoProps,
 } from './Render/Video/XmaxRealtimeVideo';
+
+export type {
+  XmaxStorageManaging,
+  XmaxUploadedFile,
+  XmaxDownloadedFile,
+  StorageProgress,
+  XmaxStorageProgressHandler,
+  UploadFileOptions,
+  DownloadFileOptions,
+} from './Core/Storage/XmaxStorageManaging';

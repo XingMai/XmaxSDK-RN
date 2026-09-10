@@ -1,0 +1,147 @@
+import type { ApiServicing } from '../Network/ApiService';
+import { record, nonEmpty } from '../Network/ApiService';
+import { XmaxError, XmaxErrorCode } from '../../Foundation/Errors/XmaxError';
+import { abortable } from '../../Foundation/Runtime/Async';
+import type {
+  UploadFileOptions,
+  DownloadFileOptions,
+  StorageProgress,
+} from '../../Core/Storage/XmaxStorageManaging';
+import type { StorageManaging } from './StorageTypes';
+import {
+  uploadMetadata,
+  parseStorageConfiguration,
+  httpURL,
+  filePath,
+} from './StorageValidation';
+
+export class StorageService {
+  constructor(
+    private readonly api: ApiServicing,
+    private readonly storage: StorageManaging,
+    private readonly uuid: () => string,
+    private readonly now: () => number = Date.now,
+  ) {}
+  async upload(
+    options: UploadFileOptions,
+    media: 'image' | 'video',
+    checksSafety: boolean,
+  ) {
+    return this.operation(
+      options,
+      XmaxErrorCode.uploadError,
+      async (signal, progress) => {
+        const metadata = uploadMetadata(
+          options.fileURL,
+          media,
+          options.contentType,
+        );
+        await abortable(this.storage.fileSize(options.fileURL), signal);
+        const config = parseStorageConfiguration(
+          await abortable(this.api.request('GET', '/cos/sts'), signal),
+        );
+        const objectKey = `${
+          config.prefix
+        }${this.now()}_${this.uuid().toLowerCase()}_${metadata.fileName}`;
+        const stored = await this.storage.upload({
+          fileURL: options.fileURL,
+          objectKey,
+          contentType: metadata.contentType,
+          configuration: config,
+          signal,
+          progress,
+        });
+        if (signal.aborted)
+          throw new XmaxError({
+            code: XmaxErrorCode.cancelled,
+            message: 'Storage operation cancelled',
+          });
+        if (!checksSafety) return stored;
+        const payload = record(
+          await abortable(
+            this.api.request('POST', '/cos/image/check', { url: stored.url }),
+            signal,
+          ),
+        );
+        if (typeof payload?.safe !== 'boolean')
+          throw new XmaxError({
+            code: XmaxErrorCode.apiError,
+            message: 'Invalid image safety check payload',
+          });
+        if (!payload.safe)
+          throw new XmaxError({
+            code: XmaxErrorCode.unsafeImage,
+            message: 'The image did not pass the safety check',
+          });
+        const checkedURL = nonEmpty(payload.url);
+        if (!checkedURL)
+          throw new XmaxError({
+            code: XmaxErrorCode.apiError,
+            message: 'Safety check returned no URL',
+          });
+        return { ...stored, url: httpURL(checkedURL).href };
+      },
+    );
+  }
+  async download(options: DownloadFileOptions) {
+    return this.operation(
+      options,
+      XmaxErrorCode.downloadError,
+      async (signal, progress) => {
+        httpURL(options.remoteURL);
+        filePath(options.destinationURL);
+        return this.storage.download({ ...options, signal, progress });
+      },
+    );
+  }
+  private async operation<T>(
+    options: Pick<UploadFileOptions, 'signal' | 'progress'>,
+    code: XmaxErrorCode,
+    run: (
+      signal: AbortSignal,
+      progress: (p: StorageProgress) => void,
+    ) => Promise<T>,
+  ): Promise<T> {
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    let finished = false,
+      timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 15 * 60 * 1000);
+    options.signal?.addEventListener('abort', abort);
+    if (options.signal?.aborted) controller.abort();
+    try {
+      if (controller.signal.aborted) throw new Error('Cancelled');
+      return await run(controller.signal, value => {
+        if (finished || controller.signal.aborted) return;
+        try {
+          options.progress?.(value);
+        } catch {
+          /* Host callbacks cannot prevent cleanup. */
+        }
+      });
+    } catch (error) {
+      if (controller.signal.aborted)
+        throw new XmaxError({
+          code: timedOut ? XmaxErrorCode.timeout : XmaxErrorCode.cancelled,
+          message: timedOut
+            ? 'Storage operation timed out'
+            : 'Storage operation cancelled',
+        });
+      if (error instanceof XmaxError) throw error;
+      throw new XmaxError({
+        code,
+        message:
+          code === XmaxErrorCode.uploadError
+            ? 'Storage upload failed'
+            : 'Storage download failed',
+      });
+    } finally {
+      finished = true;
+      clearTimeout(timer);
+      options.signal?.removeEventListener('abort', abort);
+    }
+  }
+}

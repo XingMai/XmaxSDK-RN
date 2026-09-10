@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { XmaxEnvironment, XmaxSDKInfo } from '@xmax/react-native-sdk';
 import { colors } from '../theme/tokens';
+import { StorageFeatureCard } from '../components/StorageFeatureCard';
 
 // Match FeedTypography.visualScale in the UIKit XLab reference.
 const font = (size: number) => size * 1.15;
@@ -44,9 +45,11 @@ async function openAPIKeyPage() {
 
 export function FeedScreen({
   onCamera,
+  onStorage,
   initialConfiguration,
 }: {
   onCamera: (apiKey: string, environment: XmaxEnvironment) => void;
+  onStorage: (apiKey: string, environment: XmaxEnvironment) => void;
   initialConfiguration: { apiKey: string; environment: XmaxEnvironment };
 }) {
   const [apiKey, setAPIKey] = useState(initialConfiguration.apiKey);
@@ -265,6 +268,15 @@ export function FeedScreen({
               </View>
             </View>
           </Pressable>
+          <View style={styles.section}>
+            <FeedText style={styles.sectionTitle}>SDK FEATURES</FeedText>
+            <FeedText style={styles.sectionSubtitle}>
+              更多能力与接入示例
+            </FeedText>
+          </View>
+          <StorageFeatureCard
+            onPress={() => onStorage(apiKey.trim(), environment)}
+          />
           <View style={styles.footer}>
             <View style={styles.footerDivider} />
             <FeedText style={styles.copyright}>

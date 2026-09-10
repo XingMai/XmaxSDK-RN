@@ -4,8 +4,10 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { XmaxEnvironment } from '@xmax/react-native-sdk';
 import { FeedScreen } from './src/screens/FeedScreen';
 import { CameraScreen } from './src/screens/CameraScreen';
+import { StorageScreen } from './src/screens/StorageScreen';
 export default function App() {
-  const [camera, setCamera] = useState<{
+  const [screen, setScreen] = useState<{
+    page: 'camera' | 'storage';
     apiKey: string;
     environment: XmaxEnvironment;
   } | null>(null);
@@ -13,23 +15,34 @@ export default function App() {
     apiKey: '',
     environment: XmaxEnvironment.china,
   });
-  const back = useCallback(() => setCamera(null), []);
+  const back = useCallback(() => setScreen(null), []);
   return (
     <SafeAreaProvider>
       <StatusBar barStyle="light-content" />
-      {camera ? (
+      {screen?.page === 'camera' ? (
         <CameraScreen
-          apiKey={camera.apiKey}
-          environment={camera.environment}
+          apiKey={screen.apiKey}
+          environment={screen.environment}
           onBack={back}
+        />
+      ) : screen?.page === 'storage' ? (
+        <StorageScreen
+          onBack={back}
+          apiKey={screen.apiKey}
+          environment={screen.environment}
         />
       ) : (
         <FeedScreen
           initialConfiguration={lastConfiguration}
+          onStorage={(apiKey, environment) => {
+            const configuration = { apiKey, environment };
+            setLastConfiguration(configuration);
+            setScreen({ ...configuration, page: 'storage' });
+          }}
           onCamera={(apiKey, environment) => {
             const configuration = { apiKey, environment };
             setLastConfiguration(configuration);
-            setCamera(configuration);
+            setScreen({ ...configuration, page: 'camera' });
           }}
         />
       )}

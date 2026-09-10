@@ -2,7 +2,7 @@
 
 RN 0.87.1 / React 19.2.3，TypeScript 业务 + 火山 RTC RN + 必要原生适配。工程分层和关键 API 名称对齐 iOS XmaxSDK，不依赖其 Pod。
 
-当前实现摄像头预览 → session / RTC 连接 → 提示词生成 → 远端显示 → 断开 / 关闭，以及前后台清理。XLab 有首页配置和摄像头自由提示词页面。**原生编译与逻辑测试不等于真机生成验收**，实际结果与剩余缺口见 [摄像头实现记录](docs/camera-implementation.md)。图片、COS 上传、轨迹和 Expo 暂缓。
+当前实现摄像头预览 → session / RTC 连接 → 提示词生成 → 远端显示 → 断开 / 关闭，以及前后台清理。XLab 有首页配置、摄像头自由提示词页和对齐 iOS 的存储服务页。存储已接通图片/视频选择、预览、COS 上传、安全检测、进度和结果复制，SDK 同时提供下载。**原生编译与逻辑测试不等于真机云端验收**，实际结果与剩余缺口见 [摄像头实现记录](docs/camera-implementation.md) 和 [存储实现记录](docs/storage-implementation.md)。图片生成、轨迹和 Expo 暂缓。
 
 ## 安装与运行
 
@@ -15,9 +15,9 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer npm run pods
 npm start
 ```
 
-Node 推荐 `.nvmrc` 的 22.13.0；本机验证使用 26.3.1。Android 使用 JDK 17，并配置 `ANDROID_HOME`；详细版本见 [工程标准](docs/engineering-baseline.md)。`npm ci` 的 prepare 会自动应用已登记的开发期 RTC 补丁。
+Node 推荐 `.nvmrc` 的 22.13.0；本机验证使用 26.3.1。Android 使用 JDK 17，并配置 `ANDROID_HOME`；详细版本见 [工程标准](docs/engineering-baseline.md)。`npm ci` 的 prepare 会自动应用已登记的开发期 RTC、COS 和文件传输补丁。
 
-新增原生模块后必须重新编译安装，Metro 热更新不能给旧 Hello World 二进制增加 RTC。保持 Metro 终端运行，在另一终端启动 App：
+新增原生模块后必须重新编译安装，Metro 热更新不能为旧二进制增加 RTC、COS、文件选择或视频预览模块。保持 Metro 终端运行，在另一终端启动 App：
 
 ```sh
 # iPhone 真机：也可在 Xcode 打开工作区，配置自己的签名 Team，选择手机后 Run
@@ -73,6 +73,7 @@ SDK 保留 strict、noUncheckedIndexedAccess、exactOptionalPropertyTypes、skip
 ## 文档
 
 - [摄像头实现与验收](docs/camera-implementation.md)
+- [存储实现与验收](docs/storage-implementation.md)
 - [工程标准](docs/engineering-baseline.md) / [架构](docs/architecture.md)
 - [API 语义](docs/public-api.md) / [完整目标契约](docs/public-api.d.ts)
 - [XLab UI 要求](docs/xlab-ui.md) / [厂商补丁](vendor-patches/README.md)

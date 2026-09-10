@@ -65,8 +65,11 @@ export async function cameraContract(client: XmaxClient) {
   manager.createLocalVideoStream({ fileURL: 'file:///video.mp4' });
   // @ts-expect-error Image route is not implemented in the camera stage.
   manager.createLocalImageStream({ fileURL: 'file:///image.jpg' });
-  // @ts-expect-error No no-op storage factory.
-  client.createStorageManager();
+  const storage = client.createStorageManager();
+  const uploaded = await storage.uploadImage({fileURL: 'file:///tmp/example.png', progress: p => { const n: number | null = p.fractionCompleted; return n; }});
+  const downloaded = await storage.downloadImage({remoteURL: uploaded.url, destinationURL: 'file:///tmp/result.png'});
+  const savedFileURL: string = downloaded.fileURL;
+  void savedFileURL;
   // @ts-expect-error No interpolation.
   manager.setFrameInterpolationEnabled(true);
   // @ts-expect-error Context-only overload returns void.

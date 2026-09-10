@@ -1,0 +1,188 @@
+import { useEffect, useRef, useState } from 'react';
+import { launchImageLibrary } from 'react-native-image-picker';
+import Blob from 'react-native-blob-util';
+import {
+  XmaxClient,
+  XmaxError,
+  XmaxErrorCode,
+  type XmaxEnvironment,
+  type XmaxUploadedFile,
+  type StorageProgress,
+} from '@xmax/react-native-sdk';
+
+export interface SelectedFile {
+  fileURL: string;
+  path: string;
+  contentType: string;
+  kind: 'image' | 'video';
+  width: number | null;
+  height: number | null;
+  byteCount: number;
+}
+export function useStorage(apiKey: string, environment: XmaxEnvironment) {
+  const [file, setFile] = useState<SelectedFile | null>(null);
+  const [busy, setBusy] = useState<'picking' | 'uploading' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<StorageProgress | null>(null);
+  const [safe, setSafe] = useState(false);
+  const [result, setResult] = useState<{
+    file: XmaxUploadedFile;
+    elapsed: number;
+  } | null>(null);
+  const mounted = useRef(true),
+    locked = useRef(false);
+  const selected = useRef<SelectedFile | null>(null);
+  const controller = useRef<AbortController | null>(null);
+  const running = useRef<Promise<void> | null>(null);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      controller.current?.abort();
+      const cleanup = () => {
+        if (selected.current)
+          Blob.fs.unlink(selected.current.path).catch(() => {});
+      };
+      if (running.current) running.current.finally(cleanup).catch(() => {});
+      else cleanup();
+    };
+  }, []);
+  async function pick() {
+    if (locked.current) return;
+    locked.current = true;
+    setBusy('picking');
+    setError(null);
+    let copied: string | null = null;
+    try {
+      const response = await launchImageLibrary({
+        mediaType: 'mixed',
+        selectionLimit: 1,
+        includeBase64: false,
+        assetRepresentationMode: 'current',
+      });
+      if (!mounted.current || response.didCancel) return;
+      if (response.errorCode)
+        throw new Error(response.errorMessage || '无法读取所选文件');
+      const asset = response.assets?.[0];
+      if (
+        !asset?.uri ||
+        (!asset.type?.startsWith('image/') && !asset.type?.startsWith('video/'))
+      )
+        throw new Error('请选择图片或视频');
+      const kind = asset.type.startsWith('video/') ? 'video' : 'image';
+      const suffix = asset.fileName?.split('.').pop()?.toLowerCase();
+      const ext =
+        suffix && /^[a-z0-9]+$/.test(suffix)
+          ? suffix
+          : kind === 'video'
+          ? 'mp4'
+          : 'jpg';
+      const path = `${
+        Blob.fs.dirs.CacheDir
+      }/xlab-storage-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}.${ext}`;
+      copied = path;
+      await Blob.fs.cp(
+        asset.uri.startsWith('file:')
+          ? decodeURIComponent(
+              asset.uri.replace(/^file:\/\/(?:localhost)?/i, ''),
+            )
+          : asset.uri,
+        path,
+      );
+      const stat = await Blob.fs.stat(path);
+      if (!mounted.current) return;
+      const next: SelectedFile = {
+        fileURL: `file://${path}`,
+        path,
+        contentType: asset.type,
+        kind,
+        width: asset.width ?? null,
+        height: asset.height ?? null,
+        byteCount: Number(stat.size),
+      };
+      const old = selected.current;
+      selected.current = next;
+      copied = null;
+      setFile(next);
+      setProgress(null);
+      setResult(null);
+      if (old) await Blob.fs.unlink(old.path).catch(() => {});
+    } catch (e) {
+      if (mounted.current)
+        setError(e instanceof Error ? e.message : '文件选择失败，请重试');
+    } finally {
+      if (copied) await Blob.fs.unlink(copied).catch(() => {});
+      locked.current = false;
+      if (mounted.current) setBusy(null);
+    }
+  }
+  function upload(checksSafety: boolean) {
+    if (locked.current || !selected.current) return;
+    if (!apiKey.trim()) {
+      setError('请返回首页填写 API Key 后再上传。');
+      return;
+    }
+    locked.current = true;
+    const current = selected.current;
+    const abort = new AbortController();
+    controller.current = abort;
+    setBusy('uploading');
+    setSafe(checksSafety);
+    setError(null);
+    setResult(null);
+    setProgress({
+      completedUnitCount: 0,
+      totalUnitCount: current.byteCount,
+      fractionCompleted: 0,
+    });
+    const startedAt = Date.now();
+    const operation = (async () => {
+      try {
+        const storage = new XmaxClient({
+          apiKey,
+          environment,
+        }).createStorageManager();
+        const options = {
+          fileURL: current.fileURL,
+          contentType: current.contentType,
+          signal: abort.signal,
+          progress: (value: StorageProgress) => {
+            if (mounted.current) setProgress(value);
+          },
+        };
+        const uploaded =
+          current.kind === 'video'
+            ? await storage.uploadVideo(options)
+            : checksSafety
+            ? await storage.uploadImageWithSafetyCheck(options)
+            : await storage.uploadImage(options);
+        if (mounted.current && !abort.signal.aborted)
+          setResult({ file: uploaded, elapsed: Date.now() - startedAt });
+      } catch (e) {
+        if (mounted.current && !abort.signal.aborted)
+          setError(
+            e instanceof XmaxError && e.code === XmaxErrorCode.unsafeImage
+              ? '图片未通过安全检测，请重新选择。'
+              : e instanceof Error
+              ? e.message
+              : '上传失败，请重试',
+          );
+      } finally {
+        locked.current = false;
+        if (controller.current === abort) controller.current = null;
+        if (mounted.current) setBusy(null);
+      }
+    })();
+    running.current = operation;
+  }
+  return { file, busy, error, progress, safe, result, pick, upload };
+}
+export function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024)
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}

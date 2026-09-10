@@ -1,6 +1,6 @@
 # React Native 公开 API 标准
 
-2026-09-09。已确定的首版设计标准。当前已实现摄像头实时 API、组件和尺寸计算；图片/存储/交互仍是后续设计。完整目标声明见 [public-api.d.ts](public-api.d.ts)，当前可调用范围见 [camera-implementation.md](camera-implementation.md) 和 src/index.ts 导出，本文解释目标语义。关键名称、参数业务名、状态原始值及职责对齐当前 iOS 源码。
+2026-09-10。已确定的首版设计标准。当前已实现摄像头实时 API、组件、尺寸计算和存储；图片生成/交互仍是后续设计。完整目标声明见 [public-api.d.ts](public-api.d.ts)，当前可调用范围见 [camera-implementation.md](camera-implementation.md)、[storage-implementation.md](storage-implementation.md) 和 src/index.ts 导出，本文解释目标语义。关键名称、参数业务名、状态原始值及职责对齐当前 iOS 源码。
 
 最初设计参考 iOS 工作区 `/Users/xmax.ai/dev/Xmax/iOS/XmaxSDK`，HEAD 为 `961fbb37472f9a59f85502ebcacb74d6f5e66caa`，包含未提交修改，不能把本次参考描述为该 commit 的纯净发布版本；文件指纹见 [ios-reference.json](ios-reference.json)。摄像头实施采用更新后的工作区快照，见 [camera-ios-reference.json](camera-ios-reference.json)。
 
@@ -76,11 +76,11 @@ setStateListener 注册时交付 currentState，再交付有序状态变化；�
 
 uploadImage、uploadImageWithSafetyCheck、uploadVideo、downloadImage、downloadVideo 均保留。首版只支持文件 URL 重载，Data/UIImage 重载不提供；fileURL 字段不更名。下载参数使用 iOS 本地变量名 remoteURL/destinationURL，进度字段名 progress。
 
-文件 URL 在 RN 中为字符串：iOS 可读 file://；Android 可读 file:// 或已授权 content://。源文件转成 RTC 所需绝对路径由 Foundation/File 处理。ph://、assets-library://、data:、网络输入图、require() 数字资源不直接接受。下载目的地为应用可写 file://，冲突拒绝，不覆盖现有文件；临时文件只删除 SDK 自己创建的。
+存储文件 URL 在 RN 中为字符串：iOS/Android SDK 接受可读 file://。系统选择器返回的 content:// 由 XLab 先复制到自己的缓存，再将 file:// 传给 SDK。ph://、assets-library://、data:、网络输入图、require() 数字资源不直接接受。下载目的地为应用可写 file://。核对当前 iOS StorageManager 的 Data.write(.atomic) 后，下载语义对齐为：先下载到同目录唯一临时文件，完整成功后原子替换目的文件；下载失败保留旧文件。临时文件只删除 SDK 自己创建的。
 
 XmaxStorageProgressHandler 接收 RN 的 StorageProgress，字段按 Foundation.Progress 的 completedUnitCount/totalUnitCount/fractionCompleted 表达；未知总量为 null。各传输操作独立路由，结束后清理进度、凭据等待和暂存资源，不串回调。安全检查保持显式方法，不默认为所有图片上传执行。
 
-存储使用临时凭据；不让宿主配置长期 SecretKey。实时 close 不取消共享存储任务，尤其不能取消 XLab 的参考图上传。首版不新增传输暂停/取消/dispose API。MediaServicing.resolveModelInputSize 是同步纯计算，不返回 Promise。
+存储使用临时凭据；不让宿主配置长期 SecretKey。实时 close 不取消共享存储任务，尤其不能取消 XLab 的参考图上传。首版不新增传输暂停/取消/dispose 方法；上传和下载 options 增加可选 signal: AbortSignal，适配 Swift 调用方 Task 的取消。页面返回时中断自己的任务，不能取消其他页面。MediaServicing.resolveModelInputSize 是同步纯计算，不返回 Promise。
 
 ## 7. 生命周期
 

@@ -143,11 +143,13 @@ export interface UploadFileOptions {
   readonly fileURL: string;
   readonly contentType?: string | null;
   readonly progress?: XmaxStorageProgressHandler | null;
+  readonly signal?: AbortSignal;
 }
 export interface DownloadFileOptions {
   readonly remoteURL: string;
   readonly destinationURL: string;
   readonly progress?: XmaxStorageProgressHandler | null;
+  readonly signal?: AbortSignal;
 }
 export interface XmaxStorageManaging {
   uploadImage(options: UploadFileOptions): Promise<XmaxUploadedFile>;

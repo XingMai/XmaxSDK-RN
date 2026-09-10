@@ -30,7 +30,7 @@ React 页面 → XmaxVideo / XmaxRealtimeVideo → RenderController → RTC 原�
 
 ## 2. 目录和所有权
 
-以下是实施时的目标结构；当前已落地摄像头所需的 Core、Service、Media/Camera、Stream、Render 与 Foundation，Example/XLab 接入首页和自由提示词摄像头页；图片/存储/轨迹目录仍按后续实际实现创建。
+以下是实施时的目标结构；当前已落地摄像头所需的 Core、Service、Media/Camera、Stream、Render 与 Foundation，以及 Core/Storage、Service/Storage、Foundation/Storage。Example/XLab 接入首页、自由提示词摄像头页和存储页；图片生成/轨迹目录仍按后续实际实现创建。
 
 ```text
 XmaxSDK/
@@ -127,3 +127,7 @@ Controller 更新状态后再交付监听器。内部事件带 manager/operation
 ## 摄像头阶段实现
 
 当前范围、iOS 源码快照、厂商修补与验证边界见 [camera-implementation.md](camera-implementation.md)。原生仅实现权限、owner 租约、后台销毁和 runtime 信息；生成协议与 HTTP 仍在 TypeScript。
+
+## 存储阶段实现
+
+XmaxClient → 内部 XmaxStorageManager → StorageService → Foundation StorageManager。STS 与安全检测复用 ApiService；COS 上传、原生下载和文件操作封装在 Foundation，XLab 负责系统选择器、预览、缓存文件与页面取消。存储任务独立于 RTC 生命周期。具体依赖、取消语义与验收边界见 [storage-implementation.md](storage-implementation.md)。
