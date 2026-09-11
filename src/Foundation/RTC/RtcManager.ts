@@ -1,3 +1,5 @@
+import { XmaxLogger } from '../Logging/XmaxLogger';
+import { RtcStatsLogger } from './RtcStatsLogger';
 import { PermissionsAndroid, Platform } from 'react-native';
 import {
   RTCManager as VendorRTCManager,
@@ -68,11 +70,13 @@ const qualities = [
 ];
 
 const check = (status: number | undefined, action: string) => {
-  if (status !== undefined && status < 0)
+  if (status !== undefined && status < 0) {
+    XmaxLogger.rtc.error(() => `${action} failed: ${status}`);
     throw new XmaxError({
       code: XmaxErrorCode.rtcError,
       message: `${action} failed (${status})`,
     });
+  }
 };
 
 const remote = (key: RemoteStreamKey): RemoteStream => ({
@@ -121,6 +125,8 @@ export class RtcManager {
   }
 
   private emit(event: RtcEvent): void {
+    if (event.type === 'error')
+      XmaxLogger.rtc.error(() => `RTC operation failed: ${event.error.code}`);
     for (const listener of [...this.listeners]) listener(event);
   }
 
@@ -152,6 +158,8 @@ export class RtcManager {
             ? 'granted'
             : 'microphone';
     } else result = await NativeRuntime.requestPermissions(microphone);
+    if (result !== 'granted')
+      XmaxLogger.permission.warn('Camera or microphone permission denied');
     if (result !== 'granted')
       throw new XmaxError({
         code:
@@ -198,6 +206,10 @@ export class RtcManager {
 
       check(
         engine.setRtcVideoEventHandler({
+          onSysStats: stats => {
+            if (this.owner === owner && this.active)
+              RtcStatsLogger.system(stats, this.runtime.platform);
+          },
           onFirstLocalVideoFrameCaptured: index => {
             if (index === StreamIndex.STREAM_INDEX_MAIN)
               emit({ type: 'localFrame' });
@@ -234,14 +246,16 @@ export class RtcManager {
               message: String.fromCharCode(...bytes).trim(),
             });
           },
-          onError: code =>
+          onError: code => {
+            XmaxLogger.rtc.error(() => `RTC engine error: ${code}`);
             emit({
               type: 'error',
               error: new XmaxError({
                 code: XmaxErrorCode.rtcError,
                 message: `RTC engine error (${code})`,
               }),
-            }),
+            });
+          },
           onPerformanceAlarms: (_mode, roomID, reason, data) => {
             if (this.connection && this.connection.roomID !== roomID) return;
 
@@ -322,6 +336,10 @@ export class RtcManager {
     );
 
     await ready;
+    XmaxLogger.media.info(
+      () =>
+        `Camera preview ready: ${position}, ${format.width} × ${format.height}, ${format.fps} fps`,
+    );
   }
 
   /** Starts upright image frames on the native worker at the requested frame rate. */
@@ -340,6 +358,10 @@ export class RtcManager {
       format.fps,
     );
     if (this.owner !== owner || !this.active) throw cancelledError();
+    XmaxLogger.media.info(
+      () =>
+        `Image frame delivery started: ${format.width} × ${format.height}, ${format.fps} fps`,
+    );
   }
 
   /** Selects external pixels before encoder setup, without internal capture transforms. */
@@ -450,6 +472,7 @@ export class RtcManager {
                 return;
               if (state === 0) resolve();
               else if (state < 0) {
+                XmaxLogger.room.error(() => `Room state error: ${state}`);
                 const error = new XmaxError({
                   code: XmaxErrorCode.rtcError,
                   message: `RTC room error (${state})`,
@@ -493,7 +516,16 @@ export class RtcManager {
                 this.emit({ type: 'error', error: XmaxError.from(error) });
               }
             },
-            onNetworkQuality: quality => {
+            onLocalStreamStats: stats => {
+              if (current()) RtcStatsLogger.local(stats);
+            },
+            onRemoteStreamStats: stats => {
+              if (current())
+                RtcStatsLogger.remote(stats, this.runtime.platform);
+            },
+            onNetworkQuality: (quality, remotes = []) => {
+              if (current())
+                RtcStatsLogger.network(quality, remotes, this.runtime.platform);
               if (current())
                 this.emit({
                   type: 'quality',
@@ -516,6 +548,9 @@ export class RtcManager {
                 error !==
                   RoomMessageSendResult.ByteRTCRoomMessageSendResultSuccess
               ) {
+                XmaxLogger.room.error(
+                  () => `Room signal delivery failed: ${error}`,
+                );
                 this.emit({
                   type: 'error',
                   error: new XmaxError({

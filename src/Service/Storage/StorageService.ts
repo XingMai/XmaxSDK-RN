@@ -1,3 +1,4 @@
+import { XmaxLogger } from '../../Foundation/Logging/XmaxLogger';
 import type { ApiServicing } from '../Network/ApiService';
 import { record, nonEmpty } from '../Network/ApiService';
 import { XmaxError, XmaxErrorCode } from '../../Foundation/Errors/XmaxError';
@@ -118,6 +119,10 @@ export class StorageService {
       progress: (p: StorageProgress) => void,
     ) => Promise<T>,
   ): Promise<T> {
+    const action = code === XmaxErrorCode.uploadError ? 'Upload' : 'Download';
+    const started = this.now();
+    XmaxLogger.storage.info(`${action} started`);
+
     const controller = new AbortController();
     const abort = () => controller.abort();
     let finished = false,
@@ -133,16 +138,34 @@ export class StorageService {
     try {
       if (controller.signal.aborted) throw new Error('Cancelled');
 
-      return await run(controller.signal, value => {
+      const result = await run(controller.signal, value => {
         if (finished || controller.signal.aborted) return;
 
         try {
           options.progress?.(value);
         } catch {
-          /* Host callbacks cannot prevent cleanup. */
+          XmaxLogger.storage.warn('Progress listener threw an exception');
         }
       });
+
+      XmaxLogger.storage.info(
+        () => `${action} completed in ${this.now() - started} ms`,
+      );
+
+      return result;
     } catch (error) {
+      XmaxLogger.storage.error(
+        () =>
+          `${action} failed: ${
+            controller.signal.aborted
+              ? timedOut
+                ? XmaxErrorCode.timeout
+                : XmaxErrorCode.cancelled
+              : error instanceof XmaxError
+              ? error.code
+              : code
+          }`,
+      );
       if (controller.signal.aborted)
         throw new XmaxError({
           code: timedOut ? XmaxErrorCode.timeout : XmaxErrorCode.cancelled,

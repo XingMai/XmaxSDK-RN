@@ -1,3 +1,4 @@
+import { XmaxLogger } from '../Foundation/Logging/XmaxLogger';
 import { XmaxStorageManager } from './Storage/XmaxStorageManager';
 import type { XmaxStorageManaging } from './Storage/XmaxStorageManaging';
 import { StorageService } from '../Service/Storage/StorageService';
@@ -61,6 +62,11 @@ export class XmaxClient {
       apiKey: configuration.apiKey.trim(),
       environment,
       loggerOptions,
+    });
+
+    NativeRuntime.configureLogging(loggerOptions);
+    XmaxLogger.configure(loggerOptions, (level, message, option) => {
+      NativeRuntime.writeLog(level, message, option);
     });
   }
 

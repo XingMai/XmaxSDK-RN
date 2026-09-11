@@ -16,4 +16,5 @@
 - iOS Swift 排版使用 `ios/.swift-format`；修改后执行 `npm run format:ios:check`，需要格式化时执行 `npm run format:ios`。公开声明必须有文档注释；自动检查不能替代对职责、返回语义和生命周期约束的说明。
 - SDK 重要类、公开接口、方法、组件和有语义约束的属性使用 RN 官方源码常见的 `/** ... */` JSDoc 块，先解释用途，再说明默认值、返回结果、错误或生命周期边界；仅在有帮助时使用 @param/@returns/@see 等标准标签。类型已表达的信息不重复堆砌；内部注释解释原因。注释按当前实现写，不把目标能力写成已支持，不照搬 Meta 版权或 Flow 标记。
 - App 层（Example/XLab）遵循同样的空行和 JSDoc 规范：组件、函数、事件处理回调之间分隔，组件内部按状态/ref、生命周期、副作用、事件处理和渲染组织逻辑段；不为排版调整 Hook 的调用顺序。重要页面、组件、Hook 和数据接口说明职责、资源所有权与业务边界，不能把仅 UI 的交互注释成已接通业务。SDK 和 App 的类方法空行、App 函数声明空行纳入 ESLint 检查。
+- 日志遵循 [日志说明](docs/logging.md)：全局 business/performance 位掩码、原生 OSLog/Logcat 输出；禁止把原始响应、凭据、提示词或原生异常正文写入日志。统计回调只读取当前平台支持的属性；不恢复临时逐帧日志。
 - Git 遵循 [提交与分支约定](docs/git-workflow.md)：英文 Conventional Commits，使用 main / develop / feature/<开发者>-v<版本号>，当前开发分支为 feature/yueting-v1.0.0。

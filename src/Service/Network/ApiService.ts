@@ -1,3 +1,4 @@
+import { ApiLogger } from './ApiLogger';
 import { XmaxError, XmaxErrorCode } from '../../Foundation/Errors/XmaxError';
 import type { RuntimeInfo } from '../../Foundation/Runtime/RuntimeInfo';
 
@@ -49,6 +50,9 @@ export class ApiService implements ApiServicing {
         message: 'API key cannot be empty',
       });
 
+    const started = Date.now();
+    let responseLogged = false;
+    let status: number | null = null;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 15000);
 
@@ -67,10 +71,12 @@ export class ApiService implements ApiServicing {
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         signal: controller.signal,
       });
+      status = response.status;
+      const text = await response.text();
       let value: unknown;
 
       try {
-        value = await response.json();
+        value = JSON.parse(text);
       } catch {
         throw new XmaxError({
           code: XmaxErrorCode.apiError,
@@ -80,6 +86,18 @@ export class ApiService implements ApiServicing {
       }
 
       const envelope = record(value);
+      const successful =
+        response.ok && envelope?.success === true && envelope.data != null;
+      ApiLogger.response(
+        method,
+        path,
+        response.status,
+        ApiLogger.byteLength(text),
+        Date.now() - started,
+        successful,
+        envelope?.code,
+      );
+      responseLogged = true;
 
       if (!response.ok || envelope?.success !== true)
         throw new XmaxError({
@@ -97,6 +115,18 @@ export class ApiService implements ApiServicing {
 
       return envelope.data;
     } catch (error) {
+      if (!responseLogged)
+        ApiLogger.failure(
+          method,
+          path,
+          Date.now() - started,
+          error instanceof XmaxError
+            ? error.code
+            : controller.signal.aborted
+            ? XmaxErrorCode.timeout
+            : XmaxErrorCode.networkError,
+          status,
+        );
       if (error instanceof XmaxError) throw error;
 
       throw new XmaxError({

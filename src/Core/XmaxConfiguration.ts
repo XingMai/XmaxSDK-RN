@@ -32,6 +32,8 @@ export interface XmaxConfiguration {
 
   /**
    * A bitmask of XmaxLoggerOption values. Defaults to 0 (logging disabled).
+   * Configures SDK-wide logging; the most recently created client controls
+   * existing and future services, matching the iOS SDK.
    */
   readonly loggerOptions?: number;
 }

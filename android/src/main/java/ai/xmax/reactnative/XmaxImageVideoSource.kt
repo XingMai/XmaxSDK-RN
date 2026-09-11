@@ -3,7 +3,6 @@ package ai.xmax.reactnative
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.SystemClock
-import android.util.Log
 import com.facebook.react.bridge.Promise
 import com.ss.bytertc.engine.RTCVideo
 import com.ss.bytertc.engine.data.VideoPixelFormat
@@ -96,7 +95,8 @@ internal class XmaxImageVideoSource(private val gate: Any, private val directory
                 try {
                   push()
                 } catch (error: Exception) {
-                  Log.e("XmaxSDK", "Native image frame delivery failed", error)
+                  // Exception text may contain file paths; keep the native diagnostic bounded.
+                  XmaxNativeLogger.write("error", "[Xmax][Media] Native image frame delivery failed", 1)
                   stop()
                 }
               }

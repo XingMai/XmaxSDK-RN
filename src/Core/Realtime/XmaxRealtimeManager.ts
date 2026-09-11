@@ -1,3 +1,4 @@
+import { RtcStatsLogger } from '../../Foundation/RTC/RtcStatsLogger';
 import { AppState, type NativeEventSubscription } from 'react-native';
 import type { XmaxConfiguration } from '../XmaxConfiguration';
 import { apiBaseURLs } from '../XmaxConfiguration';
@@ -8,6 +9,7 @@ import { RealtimeCoordinator } from './RealtimeCoordinator';
 import {
   invalid,
   XmaxError,
+  XmaxErrorCode,
   XmaxErrorSeverity,
 } from '../../Foundation/Errors/XmaxError';
 import { ApiService } from '../../Service/Network/ApiService';
@@ -54,7 +56,6 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   private readonly connection: XmaxRealtimeConnectionManager;
   private readonly generation: XmaxRealtimeGenerationManager;
   private readonly rtc: RtcManager;
-  private readonly logger: XmaxLogger;
   private state: RealtimeState = Object.freeze({
     connectionState: RealtimeConnectionState.idle,
     sessionID: null,
@@ -75,7 +76,6 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     options: RealtimeConfiguration,
   ) {
     this.options = Object.freeze({ ...options });
-    this.logger = new XmaxLogger(config.loggerOptions);
     this.rtc = new RtcManager();
     this.render = new RenderController(this, this.rtc);
     this.media = new MediaController(this.rtc, this.render, options.model);
@@ -155,7 +155,12 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       return Promise.reject(invalid('Realtime manager is closing'));
 
     return this.coordinator.run(action).catch(error => {
-      throw XmaxError.from(error);
+      const failure = XmaxError.from(error);
+      if (failure.code !== XmaxErrorCode.cancelled)
+        XmaxLogger.realtime.error(
+          () => `Realtime operation failed: ${failure.code}`,
+        );
+      throw failure;
     });
   }
 
@@ -173,7 +178,9 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
           ? this.generation.taskID
           : null,
     });
-    this.logger.business('Realtime state', { connectionState });
+    XmaxLogger.realtime.info(
+      () => `连接状态 (Connection State)：${connectionState}`,
+    );
     this.notify(() => this.stateListener?.(this.state));
   }
 
@@ -181,7 +188,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     try {
       deliver();
     } catch {
-      this.logger.listenerFailure();
+      XmaxLogger.realtime.warn('Host listener threw an exception');
     }
   }
 
@@ -198,7 +205,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         if (event.type === 'quality')
           this.notify(() => this.qualityListener?.(event.quality));
         if (event.type === 'performance') {
-          this.logger.performance(event.alarm);
+          RtcStatsLogger.alarm(event.alarm);
           this.notify(() => this.performanceListener?.(event.alarm));
         }
         if (
@@ -213,6 +220,9 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
   private fail(error: unknown): void {
+    XmaxLogger.realtime.error(
+      () => `Realtime failed: ${XmaxError.from(error).code}`,
+    );
     void this.coordinator
       .interrupt(async () => {
         this.update(RealtimeConnectionState.disconnecting);

@@ -44,7 +44,7 @@ export declare class XmaxError extends Error {
 export interface XmaxConfiguration {
   readonly apiKey: string;
   readonly environment?: XmaxEnvironment; // 默认 china
-  readonly loggerOptions?: number; // 位掩码，默认 0，仅允许 XmaxLoggerOption 位
+  readonly loggerOptions?: number; // SDK 全局位掩码，默认 0；最后创建的 Client 生效，仅允许 XmaxLoggerOption 位
 }
 export interface RealtimeConfiguration { readonly model: RealtimeModel }
 /** CGSize 的 RN 表示，属于平台类型适配。 */

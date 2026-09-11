@@ -5,6 +5,12 @@ import { TurboModuleRegistry, type TurboModule } from 'react-native';
  * metadata.
  */
 export interface Spec extends TurboModule {
+  /** Updates the global filter shared by JS and native SDK diagnostics. */
+  configureLogging(options: number): void;
+
+  /** Writes a preformatted SDK message to OSLog or Logcat without triggering LogBox. */
+  writeLog(level: string, message: string, option: number): void;
+
   requestPermissions(useMicrophone: boolean): Promise<string>;
 
   /** Reads orientation-corrected pixel dimensions without returning pixel data to JS. */

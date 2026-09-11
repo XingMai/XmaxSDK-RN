@@ -106,6 +106,7 @@ public final class XmaxRuntimeImplementation: NSObject, @unchecked Sendable {
   @objc
   private func didEnterBackground() {
     gate.xmaxWithLock {
+      XmaxNativeLogger.write("info", message: "[Xmax][Media] Background: releasing owned capture")
       foreground = false
 
       if owner != nil && active {
@@ -142,6 +143,7 @@ public final class XmaxRuntimeImplementation: NSObject, @unchecked Sendable {
     }
 
     images.invalidate()
+    XmaxNativeLogger.configure(0)
   }
 
   // MARK: - Media ownership
@@ -189,6 +191,22 @@ public final class XmaxRuntimeImplementation: NSObject, @unchecked Sendable {
   }
 
   // MARK: - Runtime metadata
+
+  /// Updates the SDK-wide filter, including native lifecycle diagnostics.
+  @objc(configureLogging:)
+  public func configureLogging(_ options: Double) {
+    XmaxNativeLogger.configure(options)
+  }
+
+  /// Sends an already categorized JS message to unified logging at its original level.
+  @objc(writeLog:message:option:)
+  public func writeLog(_ level: String, message: String, option: Double) {
+    guard option.isFinite, (1...3).contains(option) else {
+      return
+    }
+
+    XmaxNativeLogger.write(level, message: message, option: Int(option))
+  }
 
   /// Creates identifiers for media owners and operations without a main-thread hop.
   @objc

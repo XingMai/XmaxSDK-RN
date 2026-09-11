@@ -55,6 +55,14 @@ RCT_EXPORT_MODULE(XmaxRuntime)
   return [self.implementation runtimeInfo];
 }
 
+- (void)configureLogging:(double)options {
+  [self.implementation configureLogging:options];
+}
+
+- (void)writeLog:(NSString *)level message:(NSString *)message option:(double)option {
+  [self.implementation writeLog:level message:message option:option];
+}
+
 - (void)requestPermissions:(BOOL)useMicrophone
                    resolve:(RCTPromiseResolveBlock)resolve
                     reject:(RCTPromiseRejectBlock)reject {

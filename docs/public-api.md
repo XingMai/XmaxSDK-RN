@@ -4,6 +4,8 @@
 
 最初设计参考 iOS 工作区 `/Users/xmax.ai/dev/Xmax/iOS/XmaxSDK`，HEAD 为 `961fbb37472f9a59f85502ebcacb74d6f5e66caa`，包含未提交修改，不能把本次参考描述为该 commit 的纯净发布版本；文件指纹见 [ios-reference.json](ios-reference.json)。摄像头实施采用更新后的工作区快照，见 [camera-ios-reference.json](camera-ios-reference.json)。
 
+日志选项与 iOS 一样全局生效，由最后创建的 Client 决定，默认关闭。格式、输出渠道、指标范围与隐私差异见 [日志说明](logging.md)。
+
 ## 1. 命名与语言适配
 
 | iOS 公开入口 | RN 标准 |

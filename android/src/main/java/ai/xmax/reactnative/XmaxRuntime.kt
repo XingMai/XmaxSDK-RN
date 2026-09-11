@@ -26,6 +26,17 @@ class XmaxRuntime(private val context: ReactApplicationContext) : NativeXmaxRunt
   private var active = false
   init { app.registerActivityLifecycleCallbacks(this) }
   override fun getName() = NAME
+
+  /** Applies the same global filter to JS messages and worker diagnostics. */
+  override fun configureLogging(options: Double) {
+    XmaxNativeLogger.configure(options.toInt())
+  }
+
+  /** Writes preformatted JS diagnostics without emitting an RN console error. */
+  override fun writeLog(level: String, message: String, option: Double) {
+    XmaxNativeLogger.write(level, message, option.toInt())
+  }
+
   override fun prepareRuntime(promise: Promise) { promise.resolve(null) }
   @Synchronized override fun acquire(token: String): Boolean {
     if (owner != null || started == 0) return false
@@ -58,7 +69,9 @@ class XmaxRuntime(private val context: ReactApplicationContext) : NativeXmaxRunt
   }
 
   @Synchronized private fun stopOwnedEngine() {
-    if (owner != null && active) { imageVideo.stop(); active = false; RTCVideo.destroyRTCVideo() }
+    if (owner != null && active) {
+      XmaxNativeLogger.write("info", "[Xmax][Media] Releasing owned capture", 1)
+      imageVideo.stop(); active = false; RTCVideo.destroyRTCVideo() }
   }
   override fun invalidate() {
     app.unregisterActivityLifecycleCallbacks(this)
@@ -66,6 +79,7 @@ class XmaxRuntime(private val context: ReactApplicationContext) : NativeXmaxRunt
     stopOwnedEngine()
     imageVideo.invalidate()
     images.invalidate()
+    XmaxNativeLogger.configure(0)
     super.invalidate()
   }
   override fun onActivityStarted(activity: Activity) { started += 1 }

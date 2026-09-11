@@ -1,3 +1,4 @@
+import { XmaxLogger } from '../../Foundation/Logging/XmaxLogger';
 import type { RemoteStream } from '../../Foundation/RTC/RtcManager';
 import type { VideoContentMode } from '../../Service/Realtime/RealtimeTypes';
 import type { VideoBinding } from '../RenderController';
@@ -50,6 +51,7 @@ export class VideoSurfaceBinding {
       this.mode = mode;
       this.refresh();
     } catch {
+      XmaxLogger.render.error('Video canvas binding failed');
       this.mode = null;
       this.refresh();
     }

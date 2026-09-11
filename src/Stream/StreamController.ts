@@ -1,3 +1,4 @@
+import { XmaxLogger } from '../Foundation/Logging/XmaxLogger';
 import type { RtcManager, RemoteStream } from '../Foundation/RTC/RtcManager';
 import type {
   RealtimeContext,
@@ -44,6 +45,9 @@ export class StreamController {
           // Exact task identity, optionally followed by the server's numeric frame index.
           if (!matchesTaskSEI(taskID, event.message)) return;
 
+          XmaxLogger.stream.info(
+            'Generation task confirmed by matching room/bot SEI',
+          );
           resolve(event.stream);
         });
 
