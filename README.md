@@ -192,7 +192,7 @@ XmaxSDK offers a complete workflow that covers media acquisition, low-latency vi
 
 The package is currently private. Use the repository's **XLab workspace** to run
 and develop the SDK. Standalone npm installation is pending the release of the
-required vendor fixes; see the [release guide](./.cicd/README.md).
+required vendor fixes.
 
 From the repository root:
 
@@ -407,8 +407,8 @@ feature scope and device verification, see the [RN API guide](./docs/public-api.
 
 ## Dependencies
 
-- <ins><strong>VolcEngine RTC SDK for React Native</strong></ins> enables low-latency, real-time audio and video communication.
-- <ins><strong>Tencent Cloud COS SDK for React Native</strong></ins> handles media upload and download via object storage.
+- <ins><strong>VolcEngine RTC SDK</strong></ins> enables low-latency, real-time audio and video communication.
+- <ins><strong>Tencent Cloud COS SDK</strong></ins> handles media upload and download via object storage.
 
 <br>
 
