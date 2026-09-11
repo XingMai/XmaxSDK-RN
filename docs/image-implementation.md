@@ -27,7 +27,7 @@ await manager.close(); // Also usable directly to interrupt pending work.
 ```
 
 - SDK 接受本地 file URL、绝对路径，以及 Android 可读取的 content URI。不接受网络输入 URL；调用方保留原件直到准备完成。XLab 保留选择器返回的源 URI，供后台回来重新准备。
-- 缺省规格按方向校正后的源尺寸解析，24 fps；显式规格仍先经 MediaService 模型尺寸解析，保留请求 fps。最终尺寸按 iOS x2.0 的 32 对齐及 600000…1280000 像素规则计算。
+- 缺省规格按方向校正后的源尺寸解析，24 fps；显式规格仍先经 MediaService 模型尺寸解析，保留请求 fps。x2.0 的 resolutionBuckets 为空，按 32 对齐及 600000…1280000 像素规则 resize；x2.0-pro 仅精确接受 1024×1920、1920×1024，跳过尺寸 resize，不匹配则在准备图片前抛出 INVALID_CONFIGURATION。省略规格时，Pro 原图尺寸也必须匹配；不自动选桶。
 - 原生 ImageIO / Bitmap + EXIF 处理方向和反射，居中裁剪到最终尺寸，写入 SDK 私有缓存 JPEG（质量 0.95，透明区域黑底）。解码长边限制为 4096，以控制内存；超大图可能先降采样。动画图片只取静态首帧，具体格式由系统解码器支持。
 - 推流与 RN Image 预览共用准备后的文件，因此 SDK 尺寸、内容比例与实际输入一致。SDK 默认显示模式仍为 fill，XLab 图片页面选择 fit。
 - 图片不请求相机/麦克风权限，不启动相机/音频采集；图片创建将远端播放音量设为 1，相机创建仍静音。

@@ -60,7 +60,7 @@ function response(data, status = 200, success = true) {
   });
 }
 
-test('model dimensions match iOS fixtures and bounds', () => {
+test('model dimensions match fixtures and the iOS pixel bounds', () => {
   const service = new MediaService();
   for (const [input, expected] of [
     [
@@ -87,6 +87,9 @@ test('model dimensions match iOS fixtures and bounds', () => {
   for (const [width, height] of [
     [799, 751],
     [1130, 1130],
+    [1450, 1450],
+    [3840, 2160],
+    [2160, 3840],
     [1, 1000000],
     [1000000, 1],
     [100, 100],
@@ -110,6 +113,26 @@ test('model dimensions match iOS fixtures and bounds', () => {
     minimum: 3150,
     maximum: 6300,
   });
+});
+
+test('nonempty model buckets require exact dimensions before rounding or resizing', () => {
+  const { realtimeModelSpecifications } = require('../lib/commonjs/Service/Realtime/RealtimeTypes');
+  assert.deepEqual(realtimeModelSpecifications['x2.0'].resolutionBuckets, []);
+  const pro = new MediaService('x2.0-pro');
+  for (const size of [{ width: 1024, height: 1920 }, { width: 1920, height: 1024 }]) {
+    assert.deepEqual(pro.resolveModelInputSize(size), size);
+  }
+  for (const [width, height] of [
+    [640, 480], [512, 960], [2048, 3840], [1024, 1024],
+    [1920, 1080], [1023.9, 1920], [1024, 1919.9],
+    [0, 1920], [NaN, 1920], [Infinity, 1920],
+  ]) {
+    assert.throws(() => pro.resolveModelInputSize({ width, height }), error => {
+      assert.equal(error.code, 'INVALID_CONFIGURATION');
+      assert.match(error.message, /1024×1920, 1920×1024/);
+      return true;
+    });
+  }
 });
 
 test('iOS room payload omits the OS task suffix, with strict SEI matching', () => {
@@ -370,6 +393,130 @@ const {
 } = require('../lib/commonjs/Core/Realtime/XmaxRealtimeManager');
 const config = { apiKey: 'test-key', environment: 'china', loggerOptions: 0 };
 const createManager = () => new XmaxRealtimeManager(config, { model: 'x2.0' });
+
+test('camera validates buckets before permission and preserves accepted dimensions and fps', async () => {
+  const manager = new XmaxRealtimeManager(config, { model: 'x2.0-pro' });
+  const rtc = FakeRtc.instances.at(-1);
+  try {
+    for (const videoFormat of [
+      { width: 640, height: 480, fps: 24 },
+      { width: 1024, height: 1920, fps: 0 },
+      { width: 1024, height: 1918, fps: 24 },
+    ]) {
+      await assert.rejects(manager.createLocalCameraStream({ videoFormat }), {
+        code: 'INVALID_CONFIGURATION',
+      });
+    }
+    assert.equal(rtc.permissionCalls, 0);
+    assert.equal(rtc.camera, false);
+    const defaultStream = await manager.createLocalCameraStream();
+    assert.deepEqual(defaultStream.videoTrack.videoFormat, { width: 1024, height: 1920, fps: 24 });
+    await manager.stopLocalCameraStream();
+    for (const videoFormat of [
+      { width: 1024, height: 1920, fps: 15 },
+      { width: 1920, height: 1024, fps: 30 },
+    ]) {
+      const local = await manager.createLocalCameraStream({ videoFormat });
+      assert.deepEqual(local.videoTrack.videoFormat, videoFormat);
+      await manager.stopLocalCameraStream();
+    }
+  } finally {
+    await manager.close();
+  }
+
+  const flexible = createManager();
+  try {
+    const defaultStream = await flexible.createLocalCameraStream();
+    assert.deepEqual(defaultStream.videoTrack.videoFormat, { width: 832, height: 1472, fps: 24 });
+    await flexible.stopLocalCameraStream();
+    const local = await flexible.createLocalCameraStream({
+      videoFormat: { width: 640, height: 480, fps: 15 },
+    });
+    assert.deepEqual(local.videoTrack.videoFormat, { width: 896, height: 672, fps: 15 });
+  } finally {
+    await flexible.close();
+  }
+});
+
+test('image buckets reject unsupported explicit and source sizes before preparation', async t => {
+  const manager = new XmaxRealtimeManager(config, { model: 'x2.0-pro' });
+  const images = FakeImages.instances.at(-1), rtc = FakeRtc.instances.at(-1);
+  try {
+    for (const videoFormat of [
+      undefined,
+      { width: 640, height: 480, fps: 24 },
+      { width: 1023.9, height: 1920, fps: 24 },
+      { width: 1024, height: 1920, fps: 0 },
+    ]) {
+      await assert.rejects(manager.createLocalImageStream({ fileURL: '/image.jpg', videoFormat }), {
+        code: 'INVALID_CONFIGURATION',
+      });
+    }
+    assert.equal(images.prepared.length, 0);
+    assert.equal(rtc.imagePath, null);
+    for (const videoFormat of [
+      { width: 1024, height: 1920, fps: 15 },
+      { width: 1920, height: 1024, fps: 30 },
+    ]) {
+      const local = await manager.createLocalImageStream({ fileURL: '/image.jpg', videoFormat });
+      assert.deepEqual(local.videoTrack.videoFormat, videoFormat);
+      assert.deepEqual(images.prepared.at(-1), videoFormat);
+      await manager.stopLocalImageStream();
+    }
+    t.mock.method(images, 'size', async () => ({ width: 1920, height: 1024 }));
+    const local = await manager.createLocalImageStream({ fileURL: '/image.jpg' });
+    assert.deepEqual(local.videoTrack.videoFormat, { width: 1920, height: 1024, fps: 24 });
+  } finally {
+    await manager.close();
+  }
+});
+
+test('client accepts pro and sends its model value to the session API', async t => {
+  const configured = [], nativeLogs = [];
+  // Storage native modules are unrelated to realtime model selection.
+  mock.module(require.resolve('../lib/commonjs/Foundation/Storage/StorageManager.js'), {
+    namedExports: { StorageManager: class {} },
+  });
+  mock.module(require.resolve('../lib/commonjs/Foundation/Native/NativeXmaxRuntime.js'), {
+    defaultExport: { configureLogging(options) { configured.push(options); }, writeLog(level, message) { nativeLogs.push({ level, message }); } },
+  });
+  const { XmaxClient } = require('../lib/commonjs/Core/XmaxClient');
+  const { RealtimeModel } = require('../lib/commonjs/Service/Realtime/RealtimeTypes');
+  const client = new XmaxClient(config);
+  const { XmaxLogger } = require('../lib/commonjs/Foundation/Logging/XmaxLogger');
+  new XmaxClient({ ...config, loggerOptions: 3 });
+  XmaxLogger.realtime.info('existing category enabled by latest client');
+  new XmaxClient({ ...config, loggerOptions: 0 });
+  XmaxLogger.realtime.info('disabled for existing services too');
+  assert.deepEqual(configured, [config.loggerOptions, 3, 0]);
+  assert.equal(nativeLogs.length, 1);
+  assert.equal(nativeLogs[0].message, '[Xmax][Realtime] existing category enabled by latest client');
+  const requests = [];
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    if (init.method === 'POST') requests.push(JSON.parse(init.body));
+    return response(init.method === 'POST' ? sessionPayload : {});
+  });
+  const manager = client.createRealtimeManager({ model: RealtimeModel.x2_0_pro });
+  try {
+    const media = client.createMediaService(RealtimeModel.x2_0_pro);
+    assert.equal(media.model, 'x2.0-pro');
+    assert.deepEqual(media.resolveModelInputSize({ width: 1024, height: 1920 }), {
+      width: 1024, height: 1920,
+    });
+    assert.equal(client.createMediaService().model, 'x2.0');
+    const local = await manager.createLocalCameraStream();
+    await manager.connect({ localStream: local });
+    assert.deepEqual(requests, [{ model: 'x2.0-pro' }]);
+    assert.throws(() => client.createRealtimeManager({ model: 'unknown' }), {
+      code: 'INVALID_CONFIGURATION',
+    });
+    assert.throws(() => client.createMediaService('unknown'), {
+      code: 'INVALID_CONFIGURATION',
+    });
+  } finally {
+    await manager.close();
+  }
+});
 
 // Fetch is replaced only within each sequential test. No live service is contacted.
 test('close during POST stops camera immediately and reclaims late session; manager can be reused', async t => {

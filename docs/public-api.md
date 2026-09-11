@@ -26,6 +26,8 @@ Swift 带多个参数标签的方法转成同名 TS 方法的 options 对象，�
 
 Swift struct 以 readonly interface 表达，规范化/校验放在接收该值的方法；不要求为每个配置对象创建 JS class。枚举成员和 rawValue 均对齐，例如 `RealtimeConnectionState.generating === 'Generating'`，`XmaxErrorSeverity.fatal === 'FATAL'`，`RealtimeModel.x2_0 === 'x2.0'`。日志 OptionSet 映射为数字位掩码，默认 0。
 
+RN 新增 `RealtimeModel.x2_0_pro === 'x2.0-pro'`，可传入 `createRealtimeManager` 和 `createMediaService`，创建会话时原样发送模型值。默认帧率仍为 24 fps；XLab 默认模型仍为 X2.0。Pro 云端生成尚未实测。
+
 ## 2. Client 与服务
 
 Client 只保存配置并创建 TS 服务，不启动 RTC、不申请权限、不发请求。apiKey 去除首尾空白；本地预览允许空 key，创建存储 Manager 和连接服务端时校验。默认 environment 为 china；日志默认关闭。Client 配置不可变，切换环境/凭据创建新 Client。
@@ -52,7 +54,14 @@ Client 只保存配置并创建 TS 服务，不启动 RTC、不申请权限、�
 
 本地源一次只允许一个；创建新源之前断开并停止旧源。不隐式覆盖。创建相机时检查/请求相机权限，useMicrophone=true 时同时请求麦克风权限；麦克风连接时采集、断开时停止。本地预览音量与远端音量范围 0…1，初值及预置应用时机按 iOS；图片没有音轨时保存音量设置但不制造音频。
 
-模型 x2_0 的默认相机规格为 832×1472@24；图片默认按 MediaService 输入规则计算，24 fps。相机显式规格 width/height 必须为正偶数、fps 为正整数。图片与当前 iOS 一致，先将原图或请求规格的正数尺寸按模型规则解析为有效偶数，保留请求 fps（正整数）。尺寸计算沿用 iOS 的 600000…1280000 像素、32 对齐、越界候选选择和舍入规则，建立两端共用输入/期望结果样例。
+模型默认相机规格与 iOS 一致：x2_0 为 832×1472@24，x2_0_pro 为 1024×1920@24。`realtimeModelSpecifications[model].resolutionBuckets` 为不可变的分辨率数组，每项包含 width/height，不限制帧率：
+
+- `x2_0`：`[]`，支持任意有效输入尺寸，按 600000…1280000 像素范围和 32 对齐规则 resize。
+- `x2_0_pro`：`[{ width: 1024, height: 1920 }, { width: 1920, height: 1024 }]`，在舍入或 resize 前精确校验宽高。匹配则原样返回；不匹配抛出 `INVALID_CONFIGURATION`，错误包含模型、请求尺寸和支持尺寸。不自动选择最近桶。
+
+模型规格还公开与 iOS 同名的 `minimumInputPixels`、`maximumInputPixels`、`inputSizeAlignment`、`defaultFrameRate` 和 `defaultCameraVideoFormat`。x2.0 / Pro 的最大像素分别为 1280000 / 1966080；Pro 非空桶直接匹配，不使用面积边界 resize。旧的全局 `defaultCameraVideoFormat` 表示 x2.0 默认值。
+
+相机和图片统一使用上述规则。相机显式规格仍要求 width/height 为正偶数；fps 为正整数并原样保留。图片显式 `videoFormat` 校验其请求尺寸；省略或 null 时使用方向校正后的原图尺寸、24 fps，Pro 原图尺寸不匹配时同样报错，调用方可显式传入支持的规格。图片居中裁剪到已通过校验的目标尺寸，不改变桶匹配结果。
 
 RealtimeVideoTrack 保持稳定对象身份，videoFormat/position 是动态只读 getter；switchCamera 更新同一轨道元数据。React 显示层通过内部订阅更新，不能仅依赖对象引用变化触发重绘。流只能由对应 Manager 创建，不允许结构相同的对象冒充；内部记录 owner、来源和生命周期版本，不新增公开 kind 字段。
 
@@ -83,6 +92,8 @@ uploadImage、uploadImageWithSafetyCheck、uploadVideo、downloadImage、downloa
 XmaxStorageProgressHandler 接收 RN 的 StorageProgress，字段按 Foundation.Progress 的 completedUnitCount/totalUnitCount/fractionCompleted 表达；未知总量为 null。各传输操作独立路由，结束后清理进度、凭据等待和暂存资源，不串回调。安全检查保持显式方法，不默认为所有图片上传执行。
 
 存储使用临时凭据；不让宿主配置长期 SecretKey。实时 close 不取消共享存储任务，尤其不能取消 XLab 的参考图上传。首版不新增传输暂停/取消/dispose 方法；上传和下载 options 增加可选 signal: AbortSignal，适配 Swift 调用方 Task 的取消。页面返回时中断自己的任务，不能取消其他页面。MediaServicing.resolveModelInputSize 是同步纯计算，不返回 Promise。
+
+图片与视频上传统一使用 COS 简单 PUT，不自动分片或断点续传；文件超过服务端简单上传限制时失败，不切换上传方式。失败尽量保留可用的 HTTP 状态和 COS 错误码，具体适配见 storage-implementation.md。
 
 ## 7. 生命周期
 

@@ -78,7 +78,7 @@ export class XmaxClient {
    * @returns A manager that the caller must close when it is no longer needed.
    */
   createRealtimeManager(options: RealtimeConfiguration): XmaxRealtimeManaging {
-    if (options.model !== RealtimeModel.x2_0)
+    if (!Object.values(RealtimeModel).includes(options.model))
       throw invalid('Unsupported realtime model');
 
     return new XmaxRealtimeManager(this.configuration, options);
@@ -119,7 +119,7 @@ export class XmaxClient {
   createMediaService(
     model: RealtimeModel = RealtimeModel.x2_0,
   ): MediaServicing {
-    if (model !== RealtimeModel.x2_0)
+    if (!Object.values(RealtimeModel).includes(model))
       throw invalid('Unsupported realtime model');
 
     return new MediaService(model);

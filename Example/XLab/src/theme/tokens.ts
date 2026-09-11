@@ -12,3 +12,6 @@ export const colors = {
   trajectory: '#FF8FD8',
   storage: '#F5B86C',
 } as const;
+
+/** Matches iOS FeedTypography; individual base sizes follow the latest Feed components. */
+export const feedFont = (size: number) => size * 1.15;

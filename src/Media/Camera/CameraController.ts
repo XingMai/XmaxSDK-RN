@@ -1,15 +1,17 @@
 import type { RtcManager } from '../../Foundation/RTC/RtcManager';
 import { ensureActive, abortable } from '../../Foundation/Runtime/Async';
 import { invalid } from '../../Foundation/Errors/XmaxError';
+import { MediaService } from '../../Service/Media/MediaService';
 import {
   RenderController,
   refreshBinding,
 } from '../../Render/RenderController';
 import {
   CameraPosition,
-  defaultCameraVideoFormat,
+  realtimeModelSpecifications,
   type CameraStreamOptions,
   type RealtimeMediaStream,
+  type RealtimeModel,
 } from '../../Service/Realtime/RealtimeTypes';
 import {
   resolveBitrates,
@@ -23,11 +25,15 @@ import {
 export class CameraController {
   stream: RealtimeMediaStream | null = null;
   useMicrophone = false;
+  private readonly media: MediaService;
 
   constructor(
     private readonly rtc: RtcManager,
     private readonly render: RenderController,
-  ) {}
+    model: RealtimeModel,
+  ) {
+    this.media = new MediaService(model);
+  }
 
   async create(
     options: CameraStreamOptions,
@@ -38,12 +44,18 @@ export class CameraController {
         'Stop the current local camera stream before creating a new one',
       );
 
-    const format = Object.freeze({
-      ...(options.videoFormat ?? defaultCameraVideoFormat),
-    });
+    const requested =
+      options.videoFormat ??
+      realtimeModelSpecifications[this.media.model].defaultCameraVideoFormat;
     const position = options.position ?? CameraPosition.front;
 
+    validateVideoFormat(requested);
+    const format = Object.freeze({
+      ...this.media.resolveModelInputSize(requested),
+      fps: requested.fps,
+    });
     validateVideoFormat(format);
+
     if (!Object.values(CameraPosition).includes(position))
       throw invalid('Invalid camera position');
 

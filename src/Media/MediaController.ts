@@ -17,7 +17,7 @@ export class MediaController {
   private readonly image: ImageController;
 
   constructor(rtc: RtcManager, render: RenderController, model: RealtimeModel) {
-    this.camera = new CameraController(rtc, render);
+    this.camera = new CameraController(rtc, render, model);
     this.image = new ImageController(rtc, render, model);
   }
 

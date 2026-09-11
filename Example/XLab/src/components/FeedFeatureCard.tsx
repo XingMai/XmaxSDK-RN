@@ -8,7 +8,8 @@ import {
   type ImageSourcePropType,
 } from 'react-native';
 
-const font = (size: number) => size * 1.15;
+import { feedFont as font } from '../theme/tokens';
+import { useLocalization } from '../localization/LocalizationProvider';
 
 /** Content and availability of an SDK feature on the XLab home screen. */
 interface FeedFeatureCardProps {
@@ -39,6 +40,7 @@ export function FeedFeatureCard({
   highlightedTag,
   onPress,
 }: FeedFeatureCardProps) {
+  const { t } = useLocalization();
   const accent = useMemo(
     () =>
       StyleSheet.create({
@@ -60,7 +62,9 @@ export function FeedFeatureCard({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${title}，${onPress ? '进入' : '待接入'}`}
+      accessibilityLabel={`${title}，${t(
+        onPress ? 'feed.open' : 'feed.pending',
+      )}`}
       accessibilityState={{ disabled: !onPress }}
       disabled={!onPress}
       onPress={onPress}
@@ -80,7 +84,7 @@ export function FeedFeatureCard({
         </View>
         <View style={styles.available}>
           <Text style={[styles.availableText, accent.text]}>
-            {onPress ? 'AVAILABLE' : '待接入'}
+            {t(onPress ? 'feed.available' : 'feed.pending')}
           </Text>
         </View>
       </View>
@@ -94,7 +98,9 @@ export function FeedFeatureCard({
           <Text style={styles.subtitle}>{subtitle}</Text>
         </View>
         <View style={[styles.enter, accent.background]}>
-          <Text style={styles.enterText}>{onPress ? '进入' : '待接入'}</Text>
+          <Text style={styles.enterText}>
+            {t(onPress ? 'feed.open' : 'feed.pendingAction')}
+          </Text>
         </View>
       </View>
       <View style={styles.tags}>
@@ -212,12 +218,16 @@ const styles = StyleSheet.create({
   },
   description: { flex: 1, gap: 5 },
   title: {
-    fontSize: font(18),
+    fontSize: font(17),
     fontWeight: '700',
     includeFontPadding: false,
     color: '#F4F7FB',
   },
-  subtitle: { fontSize: font(10), includeFontPadding: false, color: '#81786F' },
+  subtitle: {
+    fontSize: font(9.5),
+    includeFontPadding: false,
+    color: '#81786F',
+  },
   enter: {
     width: 58,
     height: 34,

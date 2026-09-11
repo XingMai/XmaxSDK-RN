@@ -4,10 +4,11 @@ import { ensureActive } from '../../Foundation/Runtime/Async';
 import { invalid } from '../../Foundation/Errors/XmaxError';
 import type { RenderController } from '../../Render/RenderController';
 import { MediaService } from '../../Service/Media/MediaService';
-import type {
-  ImageStreamOptions,
-  RealtimeMediaStream,
-  RealtimeModel,
+import {
+  realtimeModelSpecifications,
+  type ImageStreamOptions,
+  type RealtimeMediaStream,
+  type RealtimeModel,
 } from '../../Service/Realtime/RealtimeTypes';
 import {
   resolveBitrates,
@@ -47,9 +48,16 @@ export class ImageController {
       ensureActive(signal);
 
       const requested = options.videoFormat;
+      const fps =
+        requested?.fps ??
+        realtimeModelSpecifications[this.media.model].defaultFrameRate;
+
+      if (!Number.isSafeInteger(fps) || fps <= 0)
+        throw invalid('Image stream frame rate must be greater than zero');
+
       const format = {
         ...this.media.resolveModelInputSize(requested ?? size),
-        fps: requested?.fps ?? 24,
+        fps,
       };
 
       validateVideoFormat(format);

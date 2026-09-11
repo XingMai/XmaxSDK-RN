@@ -156,7 +156,7 @@ test('failed write retains newer edits and deletion for explicit retry', async (
   store.setKey('global', 'other');
   failure.reject(new Error('do not echo credentials'));
   await nextTurn();
-  assert.equal(store.getSnapshot().error, '配置保存失败，请重试。');
+  assert.equal(store.getSnapshot().error, 'configuration.saveError');
   fail = false;
   await store.flush();
   assert.equal(disk.values.has('china'), false);
@@ -176,7 +176,71 @@ test('initial read is coalesced and input cannot race hydration', async () => {
   store.selectEnvironment('china');
   gate.resolve();
   await loading;
-  assert.equal(reads, 3);
+  assert.equal(reads, 4);
   assert.equal(store.getSnapshot().environment, 'global');
   assert.equal(store.getSnapshot().keys.china, 'stored');
+});
+
+test('language changes survive reload independently of API environment and credentials', async () => {
+  const disk = iosSecureStorage(), store = new ConfigurationStore(disk);
+  await store.load();
+  assert.equal(store.getSnapshot().language, 'system');
+  store.setKey('china', 'china-fixture');
+  store.selectEnvironment('global');
+  store.setKey('global', 'global-fixture');
+  store.selectLanguage('zh-Hans');
+  store.selectLanguage('en');
+  assert.equal(store.getSnapshot().language, 'en');
+  await nextTurn();
+
+  const reloaded = new ConfigurationStore(disk);
+  await reloaded.load();
+  assert.equal(reloaded.getSnapshot().language, 'en');
+  assert.equal(reloaded.getSnapshot().environment, 'global');
+  assert.deepEqual(reloaded.getSnapshot().keys, { china: 'china-fixture', global: 'global-fixture' });
+
+  reloaded.selectLanguage('system');
+  await nextTurn();
+  const followSystem = new ConfigurationStore(disk);
+  await followSystem.load();
+  assert.equal(followSystem.getSnapshot().language, 'system');
+});
+
+test('missing and obsolete language preferences fall back without overwriting existing keys', async () => {
+  for (const language of [undefined, 'fr', 'zh-Hans']) {
+    const disk = storage({ china: 'saved', ...(language ? { language } : {}) });
+    const store = new ConfigurationStore(disk);
+    const loading = store.load();
+    store.selectLanguage('en');
+    await loading;
+    assert.equal(store.getSnapshot().language, language === 'zh-Hans' ? 'zh-Hans' : 'system');
+    assert.equal(store.getSnapshot().keys.china, 'saved');
+    assert.equal(disk.values.get('language'), language);
+  }
+});
+
+test('failed language writes keep the newest preference for retry', async () => {
+  const disk = storage(), gate = deferred();
+  const write = disk.write;
+  let fail = true;
+  disk.write = async (field, value) => {
+    if (field === 'language' && fail) await gate.promise;
+    await write(field, value);
+  };
+  const store = new ConfigurationStore(disk);
+  await store.load();
+  store.selectLanguage('zh-Hans');
+  store.selectLanguage('en');
+  store.setKey('china', 'saved-key');
+  gate.reject(new Error('fixture'));
+  await nextTurn();
+  assert.equal(store.getSnapshot().language, 'en');
+  assert.equal(store.getSnapshot().error, 'configuration.saveError');
+
+  fail = false;
+  await store.flush();
+  const reloaded = new ConfigurationStore(disk);
+  await reloaded.load();
+  assert.equal(reloaded.getSnapshot().language, 'en');
+  assert.equal(reloaded.getSnapshot().keys.china, 'saved-key');
 });

@@ -1,8 +1,8 @@
 import { useMemo, type ComponentProps } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors } from '../theme/tokens';
+import { colors, feedFont as font } from '../theme/tokens';
 
-const font = (size: number) => size * 1.15;
+import { useLocalization } from '../localization/LocalizationProvider';
 
 /** Content and availability of an input pipeline on the XLab home screen. */
 interface FeedPipelineCardProps {
@@ -31,6 +31,7 @@ export function FeedPipelineCard({
   capability,
   onPress,
 }: FeedPipelineCardProps) {
+  const { t } = useLocalization();
   const accent = useMemo(
     () =>
       StyleSheet.create({
@@ -48,7 +49,9 @@ export function FeedPipelineCard({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${title}，${onPress ? '运行' : '待接入'}`}
+      accessibilityLabel={`${title}，${t(
+        onPress ? 'feed.run' : 'feed.pending',
+      )}`}
       accessibilityState={{ disabled: !onPress }}
       disabled={!onPress}
       style={({ pressed }) => [styles.pipeline, pressed && styles.pressed]}
@@ -72,7 +75,7 @@ export function FeedPipelineCard({
         <View style={styles.ready}>
           <View style={[styles.readyDot, accent.background]} />
           <FeedText style={[styles.pillText, accent.text]}>
-            {onPress ? 'READY' : '待接入'}
+            {t(onPress ? 'feed.ready' : 'feed.pending')}
           </FeedText>
         </View>
       </View>
@@ -91,7 +94,7 @@ export function FeedPipelineCard({
         </View>
         <View style={[styles.runButton, accent.background]}>
           <FeedText style={styles.runText}>
-            {onPress ? '运行' : '待接入'}
+            {t(onPress ? 'feed.run' : 'feed.pendingAction')}
           </FeedText>
         </View>
       </View>
@@ -173,14 +176,14 @@ const styles = StyleSheet.create({
     borderRadius: 3.5,
   },
   pipelineTitle: {
-    fontSize: font(21),
+    fontSize: font(19),
     fontWeight: '700',
     color: colors.primary,
     marginTop: 17,
     marginBottom: 7,
   },
   pipelineSubtitle: {
-    fontSize: font(12),
+    fontSize: font(11),
     lineHeight: 18,
     color: colors.secondary,
   },

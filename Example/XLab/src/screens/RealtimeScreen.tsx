@@ -29,6 +29,10 @@ import {
 } from '@xmax/react-native-sdk';
 import { RealtimeControlPanel } from '../realtime/RealtimeControlPanel';
 import { RealtimeLoadingOverlay } from '../realtime/RealtimeLoadingOverlay';
+import {
+  RealtimeErrorToast,
+  type RealtimeErrorNotice,
+} from '../realtime/RealtimeErrorToast';
 
 /**
  * Owns camera or image preview and its prompt/reference generation lifecycle.
@@ -67,23 +71,24 @@ export function RealtimeScreen({
   });
   const [busy, setBusy] = useState(true),
     [loading, setLoading] = useState(true),
-    [error, setError] = useState(''),
-    [prompt, setPrompt] = useState(''),
-    [permissionError, setPermissionError] = useState(false);
+    [error, setError] = useState<RealtimeErrorNotice | null>(null),
+    [prompt, setPrompt] = useState('');
 
   const nextOperation = useCallback(() => ++epoch.current, []);
+
+  const clearError = useCallback(() => setError(null), []);
 
   const showError = useCallback((value: unknown) => {
     const failure = XmaxError.from(value);
 
     if (alive.current && failure.code !== XmaxErrorCode.cancelled) {
-      setError(failure.message);
-      setPermissionError(
-        [
+      setError({
+        message: failure.message,
+        permissionError: [
           XmaxErrorCode.cameraPermissionDenied,
           XmaxErrorCode.microphonePermissionDenied,
         ].includes(failure.code),
-      );
+      });
     }
   }, []);
 
@@ -96,8 +101,7 @@ export function RealtimeScreen({
 
       setBusy(true);
       setLoading(true);
-      setError('');
-      setPermissionError(false);
+      setError(null);
 
       try {
         const stream = fileURL
@@ -182,11 +186,11 @@ export function RealtimeScreen({
   const submit = async (context: RealtimeContext) => {
     if (!manager.current || !local.current || busy) return;
     if (!apiKey) {
-      setError('请返回首页输入 API Key');
+      setError({ message: '请返回首页输入 API Key', permissionError: false });
       return;
     }
     if (!context.prompt.trim()) {
-      setError('请输入提示词');
+      setError({ message: '请输入提示词', permissionError: false });
       return;
     }
 
@@ -197,7 +201,7 @@ export function RealtimeScreen({
 
     setBusy(true);
     setLoading(true);
-    setError('');
+    setError(null);
 
     try {
       const remote = await realtime.connect({ localStream: local.current });
@@ -319,30 +323,6 @@ export function RealtimeScreen({
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.bottom}
       >
-        {!!error && (
-          <View style={styles.error}>
-            <Text style={styles.errorText}>{error}</Text>
-            {permissionError ? (
-              <Pressable
-                onPress={() => {
-                  void Linking.openSettings();
-                }}
-              >
-                <Text style={styles.retry}>打开设置</Text>
-              </Pressable>
-            ) : (
-              !localTrack && (
-                <Pressable
-                  onPress={() => {
-                    if (manager.current) void preview(manager.current);
-                  }}
-                >
-                  <Text style={styles.retry}>重试</Text>
-                </Pressable>
-              )
-            )}
-          </View>
-        )}
         <RealtimeControlPanel
           bottomInset={insets.bottom}
           apiKey={apiKey}
@@ -359,6 +339,21 @@ export function RealtimeScreen({
           canSubmit={!busy && !!localTrack}
         />
       </KeyboardAvoidingView>
+      <RealtimeErrorToast
+        notice={error}
+        top={insets.top + 78}
+        actionLabel={
+          error?.permissionError ? '打开设置' : !localTrack ? '重试' : null
+        }
+        onDismiss={clearError}
+        onAction={() => {
+          if (error?.permissionError) {
+            void Linking.openSettings().catch(showError);
+          } else if (manager.current) {
+            void preview(manager.current);
+          }
+        }}
+      />
     </View>
   );
 }
@@ -405,13 +400,4 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.7 },
   bottom: { flexShrink: 0 },
-  error: {
-    margin: 14,
-    padding: 14,
-    borderRadius: 14,
-    backgroundColor: '#381B1BF0',
-    gap: 8,
-  },
-  errorText: { fontSize: 13, lineHeight: 19, color: '#FFD6D6' },
-  retry: { fontSize: 13, color: '#8EF0C8', fontWeight: '600' },
 });

@@ -1,6 +1,7 @@
 import {
   XmaxClient,
   RealtimeModel,
+  realtimeModelSpecifications,
   CameraPosition,
   VideoContentMode,
   type RealtimeMediaStream,
@@ -13,6 +14,15 @@ import {
 
 // Compile the emitted consumer declarations, including negative calls. Never executed.
 export async function cameraContract(client: XmaxClient) {
+  const bucket: readonly MediaSize[] = realtimeModelSpecifications[RealtimeModel.x2_0_pro].resolutionBuckets;
+  // @ts-expect-error Model buckets cannot be changed by callers.
+  bucket.push({ width: 640, height: 480 });
+  const pro: XmaxRealtimeManaging = client.createRealtimeManager({
+    model: RealtimeModel.x2_0_pro,
+  });
+  client.createMediaService(RealtimeModel.x2_0_pro);
+  await pro.close();
+
   const manager: XmaxRealtimeManaging = client.createRealtimeManager({
     model: RealtimeModel.x2_0,
   });

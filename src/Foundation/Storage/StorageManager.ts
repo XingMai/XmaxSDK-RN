@@ -1,6 +1,8 @@
 import { Platform } from 'react-native';
 import Cos, {
   type CosTransferManger,
+  type CosXmlClientError,
+  type CosXmlServiceError,
   type TransferTask,
 } from 'react-native-cos-sdk-nobeacon';
 import Blob from 'react-native-blob-util';
@@ -21,22 +23,34 @@ const transfers = new Map<string, Promise<CosTransferManger>>();
 
 function transfer(config: StorageConfiguration): Promise<CosTransferManger> {
   const endpoint = storageEndpoint(config);
-  const key = `xmax:${config.region}:${endpoint.origin}`;
+  const key = `xmax:simple:${config.region}:${endpoint.origin}`;
   const existing = transfers.get(key);
 
   if (existing) return existing;
 
-  const promise = Cos.registerTransferManger(key, {
-    region: config.region,
-    host: Platform.OS === 'ios' ? endpoint.origin : endpoint.hostname,
-    ...(Platform.OS === 'android' && endpoint.port
-      ? { port: Number(endpoint.port) }
-      : {}),
-    isHttps: endpoint.protocol === 'https:',
-    connectionTimeout: 30000,
-    socketTimeout: 60000,
-    isDebuggable: false,
-  });
+  const promise = Cos.registerTransferManger(
+    key,
+    {
+      region: config.region,
+      host: Platform.OS === 'ios' ? endpoint.origin : endpoint.hostname,
+      ...(Platform.OS === 'android' && endpoint.port
+        ? { port: Number(endpoint.port) }
+        : {}),
+      isHttps: endpoint.protocol === 'https:',
+      connectionTimeout: 30000,
+      socketTimeout: 60000,
+      isDebuggable: false,
+    },
+    {
+      forceSimpleUpload: true,
+      // The pinned iOS bridge ignores forceSimpleUpload. Its file-size check
+      // must instead select startSimpleUpload / QCloudPutObjectRequest for all
+      // supported objects. Do not send this value to Android's 32-bit getInt.
+      ...(Platform.OS === 'ios'
+        ? { divisionForUpload: Number.MAX_SAFE_INTEGER }
+        : {}),
+    },
+  );
 
   transfers.set(key, promise);
   promise.catch(() => {
@@ -70,12 +84,48 @@ function cancelled() {
   });
 }
 
+/** Preserves diagnostic codes without exposing COS payloads, credentials or signed URLs. */
+function uploadError(
+  client?: CosXmlClientError,
+  service?: CosXmlServiceError,
+): XmaxError {
+  const status = service?.statusCode;
+  const httpStatus =
+    typeof status === 'number' &&
+    Number.isInteger(status) &&
+    status >= 100 &&
+    status < 600
+      ? status
+      : null;
+  const serviceCode = service?.errorCode;
+  const clientCode = client?.errorCode;
+  const details = [
+    ...(httpStatus === null ? [] : [`HTTP ${httpStatus}`]),
+    ...(typeof serviceCode === 'string' &&
+    /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(serviceCode)
+      ? [serviceCode]
+      : []),
+    ...(typeof clientCode === 'number' && Number.isSafeInteger(clientCode)
+      ? [`client ${clientCode}`]
+      : []),
+  ];
+
+  return new XmaxError({
+    code: XmaxErrorCode.uploadError,
+    message: `COS upload failed${
+      details.length ? ` (${details.join(', ')})` : ''
+    }`,
+    httpStatus,
+  });
+}
+
 /**
  * Adapts native COS uploads and file downloads to the internal storage
  * boundary.
  *
- * Routes each transfer independently and commits downloads through an atomic
- * file move.
+ * Uses simple PUT for every upload, routes each transfer independently and
+ * commits downloads through an atomic file move. COS simple-upload size limits
+ * apply; uploads never opt into multipart or resumable transfer.
  */
 export class StorageManager implements StorageManaging {
   async fileSize(fileURL: string) {
@@ -162,13 +212,8 @@ export class StorageManager implements StorageManaging {
             },
             resultListener: {
               successCallBack: headers => finish(undefined, headers),
-              failCallBack: () =>
-                finish(
-                  new XmaxError({
-                    code: XmaxErrorCode.uploadError,
-                    message: 'COS upload failed',
-                  }),
-                ),
+              failCallBack: (client, service) =>
+                finish(uploadError(client, service)),
             },
           })
           .then(

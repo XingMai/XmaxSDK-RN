@@ -119,8 +119,10 @@ export interface XmaxRealtimeManaging {
   /**
    * Requests camera permission and starts local capture.
    *
-   * Defaults to the front camera at 832 x 1472, 24 fps, with the microphone
-   * disabled. Stop the current local stream before creating another one.
+   * Defaults to the front camera at the model's default format, with the
+   * microphone disabled. Stop the current local stream before creating another one.
+   * Empty model buckets resize dimensions using pixel bounds and alignment;
+   * nonempty buckets reject unsupported dimensions before requesting permission.
    */
   createLocalCameraStream(
     options?: CameraStreamOptions,

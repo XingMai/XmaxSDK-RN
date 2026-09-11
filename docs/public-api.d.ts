@@ -3,7 +3,17 @@ import type { ReactElement } from 'react';
 import type { ViewProps } from 'react-native';
 
 export enum XmaxEnvironment { china = 'china', global = 'global' }
-export enum RealtimeModel { x2_0 = 'x2.0' }
+export enum RealtimeModel { x2_0 = 'x2.0', x2_0_pro = 'x2.0-pro' }
+/** Empty buckets resize using model bounds; nonempty buckets require exact sizes. */
+export interface RealtimeModelSpecification {
+  readonly resolutionBuckets: readonly MediaSize[];
+  readonly minimumInputPixels: number;
+  readonly maximumInputPixels: number;
+  readonly inputSizeAlignment: number;
+  readonly defaultFrameRate: number;
+  readonly defaultCameraVideoFormat: RealtimeVideoFormat;
+}
+export declare const realtimeModelSpecifications: Readonly<Record<RealtimeModel, RealtimeModelSpecification>>;
 export enum RealtimeMediaSource { camera = 'camera', image = 'image' }
 export enum CameraPosition { front = 'front', back = 'back' }
 export enum VideoContentMode { fill = 'fill', fit = 'fit' }

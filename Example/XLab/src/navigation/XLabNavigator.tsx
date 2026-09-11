@@ -51,7 +51,7 @@ function FeedRoute({
     <FeedScreen
       configuration={configuration}
       onAPIKeyChange={value => store.setKey(configuration.environment, value)}
-      onEnvironmentChange={value => store.selectEnvironment(value)}
+      onLanguageChange={value => store.selectLanguage(value)}
       onRetrySave={() => {
         void store.flush();
       }}

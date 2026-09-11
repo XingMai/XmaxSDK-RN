@@ -1,7 +1,8 @@
 import { XmaxEnvironment } from '@xmax/react-native-sdk';
+import type { XLabLanguage } from '../localization/Localization';
 
 /** Separate secure-storage slots; no shared API Key fallback between environments. */
-export type ConfigurationField = XmaxEnvironment | 'environment';
+export type ConfigurationField = XmaxEnvironment | 'environment' | 'language';
 
 /** Minimal persistence boundary, implemented by the host's secure storage. */
 export interface ConfigurationStorage {
@@ -14,9 +15,11 @@ export interface ConfigurationStorage {
 export interface SavedConfiguration {
   readonly keys: Readonly<Record<XmaxEnvironment, string>>;
   readonly environment: XmaxEnvironment;
+  readonly language: XLabLanguage;
   readonly loaded: boolean;
   readonly saving: boolean;
-  readonly error: string | null;
+  /** Localized at render time so an existing failure follows language changes. */
+  readonly error: 'configuration.readError' | 'configuration.saveError' | null;
 }
 
 /**
@@ -27,6 +30,7 @@ export class ConfigurationStore {
   private state: SavedConfiguration = {
     keys: { china: '', global: '' },
     environment: XmaxEnvironment.china,
+    language: 'system',
     loaded: false,
     saving: false,
     error: null,
@@ -61,14 +65,17 @@ export class ConfigurationStore {
     this.publish({ error: null });
     this.loading = (async () => {
       try {
-        const [china, global, environment] = await Promise.all([
+        const [china, global, environment, language] = await Promise.all([
           this.storage.read(XmaxEnvironment.china),
           this.storage.read(XmaxEnvironment.global),
           this.storage.read('environment'),
+          this.storage.read('language'),
         ]);
 
         this.publish({
           keys: { china: china ?? '', global: global ?? '' },
+          language:
+            language === 'zh-Hans' || language === 'en' ? language : 'system',
           environment:
             environment === XmaxEnvironment.global
               ? XmaxEnvironment.global
@@ -76,7 +83,7 @@ export class ConfigurationStore {
           loaded: true,
         });
       } catch {
-        this.publish({ error: '无法读取已保存的配置，请重试。' });
+        this.publish({ error: 'configuration.readError' });
       } finally {
         this.loading = null;
       }
@@ -97,6 +104,14 @@ export class ConfigurationStore {
 
     this.publish({ environment });
     this.enqueue('environment', environment);
+  }
+
+  /** Updates visible copy immediately and persists the choice independently of credentials. */
+  selectLanguage(language: XLabLanguage): void {
+    if (!this.state.loaded || language === this.state.language) return;
+
+    this.publish({ language });
+    this.enqueue('language', language);
   }
 
   private enqueue(field: ConfigurationField, value: string): void {
@@ -129,7 +144,7 @@ export class ConfigurationStore {
       this.writing = false;
       this.publish({
         saving: false,
-        error: failed ? '配置保存失败，请重试。' : null,
+        error: failed ? 'configuration.saveError' : null,
       });
     }
   }

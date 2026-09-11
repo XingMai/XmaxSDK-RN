@@ -21,6 +21,8 @@ Core/XmaxStorageManager 委托 Service/StorageService；Service 复用 ApiServic
 
 每次上传使用自己的 STS 凭据与回调组，不缓存长期密钥；沿用当前 iOS 的签名时间策略，开始时间向前容忍 60 秒、有效窗口 25 分钟。传输总超时 15 分钟。普通图片上传不调用安全检测；安全检测返回 unsafe 时抛 `UNSAFE_IMAGE`，成功返回检测后的 URL。
 
+图片、视频和参考图统一使用 COS 简单 PUT，不自动分片、不续传。具体双端适配和验证边界见本文末节。简单上传适用 COS 自身的对象大小限制；超出限制时不回退分片。
+
 上传要求可读 `file://`，XLab 将系统选择器的 file/content URI 复制到自己的缓存。媒体字节不进入 JS Base64。下载不请求上传凭据，直接使用远程 URL，写入目的地同目录的唯一临时文件，完整成功后原子替换已有目的文件；这与当前 iOS `Data.write(.atomic)` 对齐，修正最初草案的“不覆盖”描述。
 
 可选 `signal: AbortSignal` 是 Swift 调用方 Task 取消的语言适配，不增加 Manager 的 cancel/dispose 方法。页面返回取消当前传输，迟到进度不再更新 UI，最终删除本页缓存与未完成下载的临时文件。摄像头 close 不影响独立存储任务。上传不承诺进程退出后续传。
@@ -59,3 +61,15 @@ Core/XmaxStorageManager 委托 Service/StorageService；Service 复用 ApiServic
 | `Sources/XmaxSDK/Foundation/Storage/StorageManager.swift` | `6f8332974cd83c6e277fa42988811aa68b68803fab31d91e640ea771c3c2a351` |
 
 图标直接取自 iOS 资源，来源见 `Example/XLab/src/assets/storage/README.md`。构建与运行不依赖同级 iOS 仓库。
+
+## 关闭自动分片（2026-09-10）
+
+按用户要求统一普通上传。此前 Foundation 注册 COS TransferManager 时没有传输策略，iOS QCloudCOSXML 6.5.5 的 `QCloudCOSXMLUploadObjectRequest` 对文件 URL 默认使用 1 MiB 阈值，超过后进入 multipart。这与参考 iOS XmaxSDK 直接使用 `QCloudPutObjectRequest` 的行为不同；没有本次设备的错误码，不能据此确认自动分片就是上传失败的唯一原因。
+
+- Android：通过 RN 现有 `forceSimpleUpload: true` 映射到 `TransferConfig.Builder.setForceSimpleUpload(true)`。
+- iOS：当前 RN bridge 忽略 `forceSimpleUpload`，使用已支持的 `divisionForUpload: Number.MAX_SAFE_INTEGER` 设置 64 位 `mutilThreshold`。已核对已安装 SDK 的 `fakeStart` 分支：所有支持大小的文件进入 `startSimpleUpload`，内部创建普通 `QCloudPutObjectRequest`。不把这一数值发送给 Android 的 32 位 `getInt`。
+- 传输池使用独立的 `xmax:simple:` key，避免复用旧自动分片配置；所有调用共用这一规则，不传 uploadId 或注册分片初始化回调。保留文件 URL 传输、每次 STS、进度隔离及取消。
+- 失败现在保留有效 HTTP 状态、COS 服务错误码与数字客户端错误码，例如 `COS upload failed (HTTP 403, AccessDenied)`。不复制原始错误正文、鉴权参数或完整签名 URL。
+- 未修改厂商文件或原生代码；已有安装的原生 bridge 已具备所需配置，开发包可通过 Metro 刷新更新策略。发行包需重新打包 JS。
+
+SDK / XLab 类型检查、ESLint、Prettier、SDK 构建及当前工作区 66 项测试通过。新增 3 项传输测试执行真实 Foundation 和厂商 JS 回调管理，仅替换原生边界，覆盖双端普通上传策略、图片/视频/参考图、错误码、并发进度和取消时迟到原生任务的清理。本轮没有实际云端上传、HTTP 抓包或真机验收，不将配置和逻辑检查报告为用户图片已经上传成功。

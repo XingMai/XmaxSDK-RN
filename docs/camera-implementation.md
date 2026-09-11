@@ -6,7 +6,7 @@
 
 - Core：XmaxClient、XmaxRealtimeManaging、RealtimeCoordinator、连接 / 生成 Manager。
 - Service：HTTP envelope / runtime headers、session 创建 / 10 秒心跳 / 关闭、MediaServicing 输入尺寸规则。
-- Media / Stream：832×1472@24 默认前置相机、可选麦克风、翻转、编码规格、RTC 入房 / 发布 / 订阅、房间 10 秒心跳和 start / change_condition / stop。
+- Media / Stream：x2.0 默认 832×1472@24、Pro 默认 1024×1920@24 的前置相机、可选麦克风、翻转、编码规格、RTC 入房 / 发布 / 订阅、房间 10 秒心跳和 start / change_condition / stop。
 - Render：稳定轨道句柄、同 owner 校验、失效通知、厂商原生视频视图、远端实际 rendered 回调与任务 SEI 分别确认、0.3 秒淡入。
 - Foundation：厂商适配、权限、统一错误、按 Client 配置过滤的业务状态 / 性能日志；不输出提示词、Key 或鉴权头。
 - 原生小模块：TurboModule / Codegen、相机权限、RTC owner 租约、进入后台 / runtime 销毁时直接销毁自有 RTC 引擎。HTTP 和生成控制没有复制到 Swift/Kotlin。
@@ -85,3 +85,9 @@ RN 的对应组件为 `XmaxRealtimeVideo`，没有单独导出 UIKit 名称 `Xma
 6. 干净外部宿主安装、最低系统、完整 XLab 截图对照、R8 混淆、所有 ABI / 16KB page-size、许可证及可发布厂商修订包仍需验收。
 
 本机详细日志在 `/private/tmp/xmax-rn-bootstrap/camera-*`，属于本轮临时诊断产物。仓库不提交编译缓存或设备凭据。
+
+## 模型分辨率桶（2026-09-11）
+
+相机与图片共享 MediaService 尺寸解析。`realtimeModelSpecifications[model].resolutionBuckets` 为空时使用 600000…1280000 像素和 32 对齐 resize；非空时精确匹配宽高，匹配后直接使用，不匹配抛出 INVALID_CONFIGURATION。x2.0 为 []；x2.0-pro 为 1024×1920、1920×1024。相机在权限申请和 RTC 启动前完成校验，保留请求 fps。默认 1024×1920@24 命中 Pro 桶。摄像头显式尺寸现在也走模型尺寸解析。
+
+逻辑回归覆盖桶匹配、非法尺寸不先舍入、相机权限前拒绝、图片准备前拒绝、默认/显式图片尺寸及帧率保留。实际设备与云端 Pro 生成仍待验收。

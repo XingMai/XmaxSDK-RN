@@ -3,7 +3,65 @@
  */
 export enum RealtimeModel {
   x2_0 = 'x2.0',
+  x2_0_pro = 'x2.0-pro',
 }
+
+/** Input resolution constraints for a realtime model. */
+export interface RealtimeModelSpecification {
+  /**
+   * Exact supported width/height pairs, independent of frame rate. An empty
+   * array accepts any positive size and applies the pixel bounds and alignment.
+   */
+  readonly resolutionBuckets: readonly MediaSize[];
+
+  /** Minimum pixel area used only when resolutionBuckets is empty. */
+  readonly minimumInputPixels: number;
+
+  /** Maximum pixel area used only when resolutionBuckets is empty. */
+  readonly maximumInputPixels: number;
+
+  /** Dimension alignment used only when resolutionBuckets is empty. */
+  readonly inputSizeAlignment: number;
+
+  /** Default frame rate for local media sources. */
+  readonly defaultFrameRate: number;
+
+  /** Default camera dimensions and frame rate for this model. */
+  readonly defaultCameraVideoFormat: RealtimeVideoFormat;
+}
+
+/** Immutable model specifications indexed by the model's wire value. */
+export const realtimeModelSpecifications: Readonly<
+  Record<RealtimeModel, RealtimeModelSpecification>
+> = Object.freeze({
+  [RealtimeModel.x2_0]: Object.freeze({
+    resolutionBuckets: Object.freeze([]),
+    minimumInputPixels: 600000,
+    maximumInputPixels: 1280000,
+    inputSizeAlignment: 32,
+    defaultFrameRate: 24,
+    defaultCameraVideoFormat: Object.freeze({
+      width: 832,
+      height: 1472,
+      fps: 24,
+    }),
+  }),
+  [RealtimeModel.x2_0_pro]: Object.freeze({
+    resolutionBuckets: Object.freeze([
+      Object.freeze({ width: 1024, height: 1920 }),
+      Object.freeze({ width: 1920, height: 1024 }),
+    ]),
+    minimumInputPixels: 600000,
+    maximumInputPixels: 1966080,
+    inputSizeAlignment: 32,
+    defaultFrameRate: 24,
+    defaultCameraVideoFormat: Object.freeze({
+      width: 1024,
+      height: 1920,
+      fps: 24,
+    }),
+  }),
+});
 
 /**
  * The local camera to capture from.
@@ -157,8 +215,10 @@ export interface RealtimePerformanceAlarm {
  */
 export interface CameraStreamOptions {
   /**
-   * Defaults to 832 x 1472 at 24 fps. Width and height must be positive even
-   * integers.
+   * Defaults to the model's camera format at 24 fps: 832 x 1472 for x2.0,
+   * 1024 x 1920 for x2.0-pro. Width and height must be positive even
+   * integers. Empty model buckets resize dimensions using the model's bounds;
+   * nonempty buckets require an exact width/height match without resizing.
    */
   readonly videoFormat?: RealtimeVideoFormat;
 
@@ -182,15 +242,14 @@ export interface ImageStreamOptions {
   /**
    * Requested dimensions are resolved to the model's input size before a
    * centered crop. Omitted or null uses the oriented image size at 24 fps.
+   * Nonempty model buckets require those dimensions to match exactly; no
+   * nearest bucket is selected automatically.
    */
   readonly videoFormat?: RealtimeVideoFormat | null;
 }
 
 /**
- * The default x2.0 camera format: 832 x 1472 pixels at 24 frames per second.
+ * The default x2.0 camera format. For other models, read the model specification.
  */
-export const defaultCameraVideoFormat: RealtimeVideoFormat = Object.freeze({
-  width: 832,
-  height: 1472,
-  fps: 24,
-});
+export const defaultCameraVideoFormat: RealtimeVideoFormat =
+  realtimeModelSpecifications[RealtimeModel.x2_0].defaultCameraVideoFormat;

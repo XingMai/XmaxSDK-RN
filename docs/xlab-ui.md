@@ -1,5 +1,7 @@
 # Example/XLab UI 对齐要求
 
+最新首页语言与较小字号见 [首页语言与字体对齐](xlab-localization.md)，其范围及字号覆盖本文较早的首页说明。
+
 2026-09-09。用户要求 RN 示例界面与现有 XLab 对齐。首版以 **iOS XLab 的 UIKit 实现**为视觉及交互基准，Android 使用同一套 RN 页面，仅在系统选择器、权限、安全区和返回行为上遵循平台规则。
 
 ## 1. 参考与优先级
@@ -165,3 +167,5 @@ Android 按 [RN Image 官方说明](https://reactnative.dev/docs/0.83/image#gif-
 按约定只检查代码与编译，动画流畅度、加载到画面切换及快速退出/后台效果由用户运行验收。
 
 本轮 typecheck、ESLint、Prettier、36 项既有测试全部通过；iOS arm64 Debug/Release 无签名构建、Android Debug/Release 构建通过，并核对两端 Release 包中 GIF 与源文件逐字节相同。Android 首次构建遇到共享 Metro 临时缓存冲突，改用独立构建临时目录后通过，未停止用户的 Metro。
+
+Realtime 错误提示使用绝对定位的悬浮 toast，位于顶部安全区域以下，不参与预览或底部面板布局。普通错误 6 秒自动消失；带「重试」或「打开设置」的提示保留到操作或手动关闭，避免恢复入口自动消失。长文案可在 toast 内滚动，重复报错刷新计时，页面卸载清理计时器。未进行本次设备 UI 验收。

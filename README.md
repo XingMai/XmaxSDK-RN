@@ -1,85 +1,426 @@
-# XmaxSDK for React Native
+<p align="center">
+  <img src="./docs/images/brand/xmax-sdk.png" alt="XmaxSDK — Realtime Interactive Video Generation" width="880">
+</p>
 
-RN 0.87.1 / React 19.2.3，TypeScript 业务 + 火山 RTC RN + 必要原生适配。工程分层和关键 API 名称对齐 iOS XmaxSDK，不依赖其 Pod。
+<p align="center">
+  <img src="https://img.shields.io/badge/React_Native-0.87.1-61DAFB" alt="React Native 0.87.1">
+  <img src="https://img.shields.io/badge/TypeScript-6.0-3178C6" alt="TypeScript 6.0">
+  <img src="https://img.shields.io/badge/iOS-15.1%2B-007AFF" alt="iOS 15.1+">
+  <img src="https://img.shields.io/badge/Android-API_26%2B-3DDC84" alt="Android API 26+">
+</p>
 
-当前实现摄像头/图片预览 → session / RTC 连接 → 提示词生成 → 远端显示 → 断开 / 关闭，以及前后台清理。XLab 有首页配置、摄像头/图片生成页（预设参考图及自由提示词）和对齐 iOS 的存储服务页。存储已接通图片/视频选择、预览、COS 上传、安全检测、进度和结果复制，SDK 同时提供下载。**原生编译与逻辑测试不等于真机云端验收**，实际结果与剩余缺口见 [摄像头实现记录](docs/camera-implementation.md) 、[图片实现记录](docs/image-implementation.md) 和 [存储实现记录](docs/storage-implementation.md)。轨迹和 Expo 暂缓。
+React Native SDK, providing access to Xmax's real-time, interactive video generation models. The models are optimized for low latency and cost efficiency, enabling instantaneous video transformations across diverse characters, outfits, and aesthetic styles. Also, they can dynamically respond to user gestures, allowing interactive virtual subjects to blend into real-world footage for immersive experiences. XmaxSDK implements an end-to-end pipeline to leverage these novel capabilities through concise TypeScript APIs, making it easy for developers to build next-generation interactive video experiences across the iOS and Android ecosystems.
 
-XLab 会分别安全保存国内与海外 API Key，并恢复上次选择的环境；清空输入框可删除当前环境的 Key。此行为仅属于示例 App，SDK 本身不持久化 API Key。
+<!-- Product demos from the iOS XLab reference application. -->
+<p align="center"><img src="./docs/images/xlab/generation-demo.gif" alt="X-Lab realtime generation demo" width="33%" /><img src="./docs/images/xlab/index-demo.gif" alt="X-Lab index demo" width="33%" /><img src="./docs/images/xlab/storage-demo.gif" alt="X-Lab storage demo" width="33%" /></p>
 
-XLab 使用原生导航栈，进入功能页后返回会保留首页滚动位置；路由配置与退出清理见 [页面导航](docs/xlab-navigation.md)。
+<br>
 
-## 安装与运行
+## What XmaxSDK does
 
-在仓库根目录执行：
+XmaxSDK offers a complete workflow that covers media acquisition, low-latency video communication, frame-by-frame generation, and in-app rendering. Whether processing live camera feeds, pre-recorded video, or still images, it streams media to our cloud inference service, applies on-device enhancement to the returned video, and renders the result to screen. With the entire workflow abstracted into simple API calls, integrating real-time video generation is seamless and intuitive.
+
+<br>
+
+## What you can build with XmaxSDK
+
+<table>
+  <tr>
+    <th width="24%" align="left">Realtime Use Case</th>
+    <th width="60%" align="left">Description</th>
+    <th width="16%" align="center">Demo</th>
+  </tr>
+  <tr>
+    <td rowspan="2" width="24%" valign="middle">
+      <strong>Character Swapping</strong>
+    </td>
+    <td width="60%" valign="middle">
+      Replace anyone in your live feed with a designated avatar in real-time.
+    </td>
+    <td rowspan="2" width="16%" align="center" valign="middle">
+      <a href="https://cdn.jsdelivr.net/gh/XingMai/XmaxSDK-iOS@88182780abe60b3df1c44f549487fcf8ab4b660c/docs/videos/use-cases/character-swapping.mp4">
+        <img src="./docs/images/use-cases/character-swapping-poster.png" alt="Play the Character Swapping demo" width="120">
+        <br>
+        <sub>▶ Play demo</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td width="60%" valign="middle">
+      <strong>Prompt:</strong> <code>视频中角色替换成参考图中角色</code>
+      <br><br>
+      <strong>Reference image:</strong> Select a clear image of the desired character with a clean background.
+    </td>
+  </tr>
+  <tr>
+    <td rowspan="2" width="24%" valign="middle">
+      <strong>Virtual Try-On</strong>
+    </td>
+    <td width="60%" valign="middle">
+      Seamlessly change outfits, preserving exact body shape, natural motion, and an
+      authentic fit.
+    </td>
+    <td rowspan="2" width="16%" align="center" valign="middle">
+      <a href="https://cdn.jsdelivr.net/gh/XingMai/XmaxSDK-iOS@88182780abe60b3df1c44f549487fcf8ab4b660c/docs/videos/use-cases/virtual-try-on.mp4">
+        <img src="./docs/images/use-cases/virtual-try-on-poster.png" alt="Play the Virtual Try-On demo" width="120">
+        <br>
+        <sub>▶ Play demo</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td width="60%" valign="middle">
+      <strong>Prompt:</strong> <code>视频中人物衣服替换成参考图中衣服</code>
+      <br><br>
+      <strong>Reference image:</strong> Select a clear image of the target outfit with a clean background.
+    </td>
+  </tr>
+  <tr>
+    <td rowspan="2" width="24%" valign="middle">
+      <strong>Video Restyling</strong>
+    </td>
+    <td width="60%" valign="middle">
+      Reimagine your world in any style with an immersive visual experience.
+    </td>
+    <td rowspan="2" width="16%" align="center" valign="middle">
+      <a href="https://cdn.jsdelivr.net/gh/XingMai/XmaxSDK-iOS@88182780abe60b3df1c44f549487fcf8ab4b660c/docs/videos/use-cases/video-restyling.mp4">
+        <img src="./docs/images/use-cases/video-restyling-poster.png" alt="Play the Video Restyling demo" width="120">
+        <br>
+        <sub>▶ Play demo</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td width="60%" valign="middle">
+      <strong>Prompt:</strong> <code>视频风格变为参考图指定的风格</code>
+      <br><br>
+      <strong>Reference image:</strong> Select an image that captures the artistic style you want to apply.
+    </td>
+  </tr>
+  <tr>
+    <td rowspan="2" width="24%" valign="middle">
+      <strong>AI Companions</strong>
+    </td>
+    <td width="60%" valign="middle">
+      Summon virtual characters into your live camera feed and interact with them
+      through gestures.
+    </td>
+    <td rowspan="2" width="16%" align="center" valign="middle">
+      <a href="https://cdn.jsdelivr.net/gh/XingMai/XmaxSDK-iOS@88182780abe60b3df1c44f549487fcf8ab4b660c/docs/videos/use-cases/ai-companions.mp4">
+        <img src="./docs/images/use-cases/ai-companions-poster.png" alt="Play the AI Companions demo" width="120">
+        <br>
+        <sub>▶ Play demo</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td width="60%" valign="middle">
+      <strong>Prompt:</strong> <code>指定角色在场景中互动</code>
+      <br><br>
+      <strong>Reference image:</strong> Select a clear image of the virtual character you want to summon with a clean background.
+    </td>
+  </tr>
+  <tr>
+    <td rowspan="2" width="24%" valign="middle">
+      <strong>Live Photo</strong>
+    </td>
+    <td width="60%" valign="middle">
+      Animate and control characters in your images simply by drawing motion
+      trajectories.
+    </td>
+    <td rowspan="2" width="16%" align="center" valign="middle">
+      <a href="https://cdn.jsdelivr.net/gh/XingMai/XmaxSDK-iOS@4351aa869d4e24fd40690c670d8949bff270dee0/docs/videos/use-cases/live-photo.mp4">
+        <img src="./docs/images/use-cases/live-photo-poster.png" alt="Play the Live Photo demo" width="120">
+        <br>
+        <sub>▶ Play demo</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td width="60%" valign="middle">
+      <strong>Prompt:</strong> <code>让画面自然动起来</code>
+      <br><br>
+      <strong>Reference image:</strong> Use the input image as the reference
+    </td>
+  </tr>
+</table>
+
+<br>
+
+## Why XmaxSDK?
+
+<table>
+  <thead>
+    <tr>
+      <th height="104" align="center" valign="middle">
+        <img src="./docs/images/why/low-latency.svg" alt="Low latency" width="36" height="36"><br>Low latency
+      </th>
+      <th height="104" align="center" valign="middle">
+        <img src="./docs/images/why/low-cost.svg" alt="Cost efficiency" width="36" height="36"><br>Cost efficiency
+      </th>
+      <th height="104" align="center" valign="middle">
+        <img src="./docs/images/why/high-fidelity.svg" alt="High fidelity" width="36" height="36"><br>High fidelity
+      </th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>End-to-end latency is measured in <img src="./docs/images/why/latency-highlight.svg" alt="hundreds of milliseconds" width="192" height="20" align="absmiddle">, ensuring that updates to generation conditions and interaction controls are reflected instantly.</td>
+      <td>Run on a <img src="./docs/images/why/gpu-highlight.svg" alt="single RTX 5090" width="126" height="20" align="absmiddle">, reducing inference costs by orders of magnitude versus datacenter GPUs like H100.</td>
+      <td>Our models support real-time generation at up to <img src="./docs/images/why/resolution-highlight.svg" alt="1080p" width="48" height="20" align="absmiddle">, delivering production-ready, high-quality video output.</td>
+    </tr>
+  </tbody>
+</table>
+
+<br>
+
+## Prerequisites
+
+- iOS 15.1 or later / Android API 26 or later
+- React Native 0.87.1 / React 19.2.3, New Architecture
+- TypeScript 6
+- An Xmax API key
+
+> [!WARNING]
+> Never commit your Xmax API key to version control. Pass it securely at
+> runtime or use short-lived temporary keys issued by the Xmax API. For step-by-step
+> instructions, see [Authentication](https://platform.xmaxai.com/docs/authentication).
+
+<br>
+
+## Installation
+
+The package is currently private. Use the repository's **XLab workspace** to run
+and develop the SDK. Standalone npm installation is pending the release of the
+required vendor fixes; see the [release guide](./.cicd/README.md).
+
+From the repository root:
 
 ```sh
 npm ci
+```
+
+For iOS, install CocoaPods dependencies:
+
+```sh
 bundle install
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer npm run pods
+```
+
+Start Metro:
+
+```sh
 npm start
 ```
 
-Node 推荐 `.nvmrc` 的 22.13.0；本机验证使用 26.3.1。Android 使用 JDK 17，并配置 `ANDROID_HOME`；详细版本见 [工程标准](docs/engineering-baseline.md)。`npm ci` 的 prepare 会自动应用已登记的开发期 RTC、COS 和文件传输补丁。
-
-新增原生模块后必须重新编译安装，Metro 热更新不能为旧二进制增加 RTC、COS、文件选择或视频预览模块。保持 Metro 终端运行，在另一终端启动 App：
+Keep Metro running and launch the app from another terminal:
 
 ```sh
-# iPhone 真机：也可在 Xcode 打开工作区，配置自己的签名 Team，选择手机后 Run
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer npm run ios -- --device "你的 iPhone 名称" --no-packager
+# iPhone: configure your signing team in Xcode first.
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer npm run ios -- --device "Your iPhone" --no-packager
 
-# Android：连接并授权 USB 调试的设备，或启动模拟器
+# Android: connect a device or start an emulator.
 npm run android -- --no-packager
 ```
 
-iOS 工作区为 `Example/XLab/ios/XLab.xcworkspace`。当前火山 iOS 二进制提供 arm64 真机和 x86_64 模拟器切片，**没有 arm64 模拟器切片**；不要用此前 Hello World 的 Apple Silicon 模拟器运行结果推断 RTC 可用。优先使用 iPhone 真机。
+The iOS workspace is [`Example/XLab/ios/XLab.xcworkspace`](./Example/XLab/ios/XLab.xcworkspace).
+The pinned RTC binary does not include an arm64 iOS Simulator slice; use an iPhone
+for the iOS example. Native dependency changes require rebuilding the app.
 
-Android 原生工程为 `Example/XLab/android`。厂商 Maven 仓库已经配置；旧 Support Library 传递依赖需要工程中的 `android.enableJetifier=true`，来源与验证见实现记录。首次构建会下载 Gradle、SDK、NDK 和 Maven 依赖。
+See [development and troubleshooting](./docs/development.md) for toolchain setup,
+Metro connectivity, checks, and packaging details.
 
-运行后在首页选择中国/全球环境，输入 API Key，进入摄像头。空 Key 可看预览，生成需要有效 Key。输入提示词后发送；再次发送更新条件，停止按钮断开生成并保留相机预览，返回释放摄像头。XLab 将两种环境的 Key 分别保存到 iOS Keychain / Android Keystore 支持的本机安全存储，启动时恢复；清空输入会删除对应 Key。SDK 本身不持久化 Key。
+<br>
 
-本机 Pixel 模拟器若默认宿主地址无法连到 Metro，可执行 `adb reverse tcp:8081 tcp:8081`，在 Dev Settings 中把调试地址设为 `localhost:8081`。这只是本机调试配置，不写入业务 SDK。
+## Quick Start
 
-App 已连接 Metro 后，在 Metro 终端按 `j` 打开 React Native DevTools。改 TS/TSX 可热更新；改 Pod、Gradle 或原生代码需重新构建。8081 已被当前项目的 Metro 占用时直接复用，不要重复启动。
+### Configure permissions
 
-## SDK 调用
+Add a camera usage description to your application's `Info.plist`:
+
+```xml
+<key>NSCameraUsageDescription</key>
+<string>This app uses the camera for real-time video input.</string>
+```
+
+Customize this message to match your application's user experience. XmaxSDK
+automatically prompts for camera access when creating the video stream and throws
+an `XmaxError` if permission is denied or unavailable.
+
+<br>
+
+For Android, add permissions to your application's `AndroidManifest.xml`:
+
+```xml
+<uses-permission android:name="android.permission.CAMERA" />
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
+<uses-permission android:name="android.permission.INTERNET" />
+```
+
+If enabling microphone input, also add `NSMicrophoneUsageDescription` to the iOS
+`Info.plist`. XLab already includes this configuration.
+
+<br>
+
+### Generate and display video
+
+The following TypeScript snippet creates a camera stream, starts real-time generation,
+and binds the output to a video view. Run this within an async screen action.
 
 ```tsx
-const client = new XmaxClient({ apiKey, environment: XmaxEnvironment.china });
-const realtime = client.createRealtimeManager({ model: RealtimeModel.x2_0 });
-const localStream = await realtime.createLocalCameraStream();
+import {
+  XmaxClient,
+  RealtimeModel,
+  CameraPosition,
+} from '@xmax/react-native-sdk';
+
+const client = new XmaxClient({ apiKey: 'YOUR_XMAX_API_KEY' });
+
+const realtime = client.createRealtimeManager({
+  model: RealtimeModel.x2_0,
+});
+
+const localStream = await realtime.createLocalCameraStream({
+  videoFormat: { width: 704, height: 1280, fps: 24 },
+  position: CameraPosition.front,
+});
 setLocalTrack(localStream.videoTrack);
+
 const remoteStream = await realtime.connect({ localStream });
-setRemoteTrack(remoteStream.videoTrack); // 先挂载视图，再开始生成
-await realtime.startGeneration({ context: { prompt: '水彩风格' } });
-// <XmaxRealtimeVideo localTrack={localTrack} remoteTrack={remoteTrack} style={{ flex: 1 }} />
-await realtime.disconnect(); // 保留本地预览
-await realtime.close();      // 释放相机与 RTC
+setRemoteTrack(remoteStream.videoTrack);
+
+// Bind the remote track before waiting for generation confirmation.
+await realtime.startGeneration({
+  context: {
+    prompt: '视频中角色替换成参考图中角色',
+    referencePath: 'https://platform.xmaxai.com/images/source/charx/chatx_image1.jpg',
+  },
+});
 ```
 
-完整的错误、监听器和生命周期处理见 `Example/XLab/src/screens/CameraScreen.tsx`。公开协议是 XmaxRealtimeManaging，具体 Manager / 厂商类型保持内部。
+Add the video view to your view hierarchy. The view displays a local camera
+preview until the first generated frame arrives.
 
-## 验证
+<br>
 
-```sh
-npm run typecheck
-npm run lint
-npm run format:check
-npm test
-npm pack --dry-run
+### Using React Native
+
+Use `XmaxRealtimeVideo` as your primary React Native view. Store the local and remote
+tracks in React state, updating them dynamically as streams become available:
+
+```tsx
+import { useState } from 'react';
+import {
+  XmaxRealtimeVideo,
+  VideoContentMode,
+  type RealtimeVideoTrack,
+} from '@xmax/react-native-sdk';
+
+// Inside your screen component:
+const [localTrack, setLocalTrack] = useState<RealtimeVideoTrack | null>(null);
+const [remoteTrack, setRemoteTrack] = useState<RealtimeVideoTrack | null>(null);
+
+<XmaxRealtimeVideo
+  localTrack={localTrack}
+  remoteTrack={remoteTrack}
+  videoContentMode={VideoContentMode.fill}
+  style={{ flex: 1 }}
+/>
 ```
 
-`npm test` 构建 CommonJS / ESM / 声明文件，检查已输出的公开声明正负调用，再运行真实 TS 控制层的协议、尺寸与生命周期测试，只有原生边界和 HTTP 被替换。
+See the [React Native guide](./docs/public-api.md) for state binding and the
+[example project](#example-project) for a complete implementation.
 
-SDK 保留 strict、noUncheckedIndexedAccess、exactOptionalPropertyTypes、skipLibCheck=false。RN 0.87 类型使用官方 `react-native-legacy-deep-imports` 条件选择兼容声明；运行时仍为新架构。XLab 沿用模板 skipLibCheck=true。具体原因和验证边界见实现记录。
+<br>
 
-包暂设 private。当前厂商补丁用于仓库开发，尚未提供供外部应用独立安装的受维护厂商修订包，因此 npm pack 成功不代表已可发布。
+### Listen for events
 
-## 文档
+After creating `realtime`, register the listeners you need before creating the
+input stream or starting generation.
 
-- [RN CI/CD 与 npm 发版流程](.cicd/README.md)
-- [摄像头实现与验收](docs/camera-implementation.md)
-- [存储实现与验收](docs/storage-implementation.md)
-- [工程标准](docs/engineering-baseline.md) / [架构](docs/architecture.md)
-- [API 语义](docs/public-api.md) / [完整目标契约](docs/public-api.d.ts)
-- [XLab UI 要求](docs/xlab-ui.md) / [厂商补丁](vendor-patches/README.md)
-- [Git 提交与分支约定](docs/git-workflow.md)
+| Listener | Purpose |
+| --- | --- |
+| `setStateListener` | Observe pipeline states during real-time generation. |
+| `setErrorListener` | Handle fatal errors that prevent the realtime workflow from continuing. |
+| `setCameraPreviewReadyListener` | Notify when the initial local camera frame is ready for preview rendering. |
+| `setNetworkQualityListener` | Monitor uplink and downlink network quality. |
+| `setPerformanceAlarmListener` | Detect device performance limitations or recovery, with a suggested video format when available. |
+
+For example, monitor state changes and errors:
+
+```ts
+await realtime.setStateListener(state => {
+  setConnectionState(state.connectionState);
+});
+
+await realtime.setErrorListener(error => {
+  setErrorMessage(`${error.code} ${error.message}`);
+});
+```
+
+<br>
+
+### Resource Cleanup
+
+- **`disconnect()` — Stop Remote Generation**
+
+  Stops remote generation and cancels billing while keeping the local camera stream
+  and preview active. Use this when ending the online session but staying on the
+  current screen. You can start a new session later using the same local stream:
+
+  ```ts
+  await realtime.disconnect()
+  ```
+
+- **`close()` — Full Teardown & Release**
+
+  Ends the remote session, stops local media capture, and releases all engine
+  resources. Use this when leaving or dismissing the generation screen:
+
+  ```ts
+  await realtime.close()
+  ```
+
+> **Note:** These methods are alternatives, not sequential steps. When exiting a
+> screen, call `close()` directly—there is no need to call `disconnect()` first.
+
+<br>
+
+> [!TIP]
+> For complete React Native usage examples, including image inputs and reference
+> images, see the [usage guide](./docs/public-api.md).
+
+<br>
+
+## Example Project
+
+A complete example application featuring a React Native implementation
+is available in [`Example/XLab`](./Example/XLab).
+It demonstrates real-time generation using live camera feeds and static images.
+
+<p align="center"><img src="./docs/images/xlab/home.jpg" alt="X-Lab home" width="20%" /><img src="./docs/images/xlab/features.jpg" alt="X-Lab SDK features" width="20%" /><img src="./docs/images/xlab/storage.jpg" alt="X-Lab storage service" width="20%" /><img src="./docs/images/xlab/realtime-generation.jpg" alt="X-Lab realtime generation" width="20%" /><img src="./docs/images/xlab/trajectory-generation.jpg" alt="X-Lab trajectory generation" width="20%" /></p>
+
+The galleries show the iOS XLab reference application. For the current React Native
+feature scope and device verification, see the [RN API guide](./docs/public-api.md).
+
+<br>
+
+## Dependencies
+
+- <ins><strong>VolcEngine RTC SDK for React Native</strong></ins> enables low-latency, real-time audio and video communication.
+- <ins><strong>Tencent Cloud COS SDK for React Native</strong></ins> handles media upload and download via object storage.
+
+<br>
+
+## Contact us
+
+For bug reports and feature requests, please open a
+[GitHub Issue](https://github.com/XingMai/XmaxSDK-RN/issues). For integration
+assistance and technical support, contact us at [sdk@xmax.ai](mailto:sdk@xmax.ai).
+
+<br>
+
+## License
+
+The RN package is currently marked `UNLICENSED` and private. Public distribution
+terms have not been added to this repository.
