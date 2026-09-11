@@ -271,6 +271,8 @@ export function RealtimeScreen({
     setLoading(false);
 
     try {
+      // Keep the container mounted until SDK native hiding acknowledges teardown.
+      // Removing it here unregisters the hide callback before disconnect can use it.
       await manager.current?.disconnect();
     } catch (failure) {
       showError(failure);

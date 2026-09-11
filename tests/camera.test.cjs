@@ -856,3 +856,39 @@ test('background destroys image source, removes prepared file, and foreground do
   assert.equal(rtc.packets.length, 0);
   assert.equal(lifecycleListeners.size, 0);
 });
+
+test('disconnect waits for native overlay hiding before stop signal and room release', async t => {
+  t.mock.method(globalThis, 'fetch', async (_url, init) => response(init.method === 'POST' ? sessionPayload : {}));
+  const manager = createManager();
+  const local = await manager.createLocalCameraStream();
+  const rtc = FakeRtc.instances.at(-1);
+  const remote = await manager.connect({ localStream: local });
+  const starting = manager.startGeneration({ context: { prompt: 'animate' } });
+  await nextTurn();
+  const start = rtc.packets.find(packet => packet.event === 'start');
+  rtc.emit({ type: 'sei', stream: { roomID: 'room-1', userID: 'bot-1' }, message: start.uid });
+  await starting;
+  const { videoBinding } = require('../lib/commonjs/Render/RenderController');
+  const record = videoBinding(remote.videoTrack);
+  const hidden = defer();
+  let hiding = false, leaves = 0;
+  record.hideBeforeRelease.add(() => { hiding = true; return hidden.promise; });
+  t.mock.method(rtc, 'leave', () => { leaves++; });
+  const disconnecting = manager.disconnect();
+  try {
+    await nextTurn();
+    assert.equal(hiding, true);
+    assert.equal(record.valid, true);
+    assert.equal(record.retiring, true);
+    assert.equal(rtc.packets.some(packet => packet.event === 'stop'), false);
+    assert.equal(leaves, 0);
+    assert.equal(rtc.camera, true);
+    hidden.resolve();
+    await disconnecting;
+    assert.equal(rtc.packets.filter(packet => packet.event === 'stop').length, 1);
+    assert.equal(leaves, 1);
+    assert.equal(record.valid, false);
+    assert.equal(videoBinding(local.videoTrack).valid, true);
+    assert.equal(rtc.camera, true);
+  } finally { hidden.resolve(); await disconnecting; await manager.close(); }
+});

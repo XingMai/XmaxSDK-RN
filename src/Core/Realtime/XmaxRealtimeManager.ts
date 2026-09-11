@@ -473,6 +473,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
   private async disconnectInternal(): Promise<void> {
+    await this.render.hideRemote();
     try {
       this.generation.reset();
     } finally {

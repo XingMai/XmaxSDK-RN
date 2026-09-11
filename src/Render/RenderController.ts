@@ -1,3 +1,4 @@
+import { XmaxLogger } from '../Foundation/Logging/XmaxLogger';
 import type { InteractionController } from '../Media/Interaction/InteractionController';
 import { invalid } from '../Foundation/Errors/XmaxError';
 import type { RtcManager, RemoteStream } from '../Foundation/RTC/RtcManager';
@@ -19,6 +20,10 @@ export interface VideoBinding {
   /** Remote-only task interaction; local preview never sends touch samples. */
   readonly interaction: InteractionController | null;
   valid: boolean;
+  /** Terminal display retirement is separate from canvas invalidation. */
+  retiring: boolean;
+  retirement: Promise<void> | null;
+  readonly hideBeforeRelease: Set<() => Promise<void>>;
   confirmed: boolean;
   format: RealtimeVideoFormat;
   position: CameraPosition | null;
@@ -78,6 +83,9 @@ export class RenderController {
       local,
       interaction: local ? null : this.interaction,
       valid: true,
+      retiring: false,
+      retirement: null,
+      hideBeforeRelease: new Set(),
       confirmed: false,
       format: Object.freeze({ ...format }),
       position,
@@ -119,6 +127,34 @@ export class RenderController {
       throw invalid('Local stream does not belong to this active manager');
 
     return binding;
+  }
+
+  /** Completes native UI hiding before stop signals or room teardown can clear video pixels. */
+  async hideRemote(): Promise<void> {
+    await Promise.all(
+      [...this.owned]
+        .filter(binding => !binding.local)
+        .map(binding => {
+          if (binding.retirement) return binding.retirement;
+          const hides = [...binding.hideBeforeRelease];
+          binding.retiring = true;
+          refreshBinding(binding);
+          binding.retirement = Promise.all(
+            hides.map(async hide => {
+              try {
+                await hide();
+              } catch {
+                // Failed or stale view lookup must not strand room/session cleanup.
+                XmaxLogger.render.warn(
+                  'Native video hide failed during teardown',
+                );
+              }
+            }),
+          ).then(() => {});
+
+          return binding.retirement;
+        }),
+    );
   }
 
   invalidate(local: boolean | null = null): void {

@@ -1,4 +1,5 @@
 package ai.xmax.reactnative
+import com.facebook.react.uimanager.UIManagerHelper
 import android.app.Activity
 import android.app.Application
 import android.os.Build
@@ -35,6 +36,26 @@ class XmaxRuntime(private val context: ReactApplicationContext) : NativeXmaxRunt
   /** Writes preformatted JS diagnostics without emitting an RN console error. */
   override fun writeLog(level: String, message: String, option: Double) {
     XmaxNativeLogger.write(level, message, option.toInt())
+  }
+
+  /** Acknowledges native UI hiding before JS is allowed to tear down the RTC room. */
+  override fun hideVideoContainer(reactTag: Double, nativeID: String, promise: Promise) {
+    main.post {
+      try {
+        val tag = reactTag.toInt()
+        val view = UIManagerHelper.getUIManager(context, tag)?.resolveView(tag)
+        if (view?.getTag(com.facebook.react.R.id.view_tag_native_id) == nativeID) {
+          // Match the React opacity prop so recycling does not retain hidden visibility.
+          view.alpha = 0f
+        }
+        promise.resolve(null)
+      } catch (_: com.facebook.react.uimanager.IllegalViewOperationException) {
+        // Already unmounted: there is no remote container left to cover the preview.
+        promise.resolve(null)
+      } catch (error: Exception) {
+        promise.reject("INTERNAL_ERROR", "Unable to hide video container", error)
+      }
+    }
   }
 
   override fun prepareRuntime(promise: Promise) { promise.resolve(null) }

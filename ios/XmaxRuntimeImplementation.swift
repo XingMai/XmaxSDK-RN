@@ -73,6 +73,15 @@ public final class XmaxRuntimeImplementation: NSObject, @unchecked Sendable {
     )
   }
 
+  /// Hides the SDK container after the RN adapter verifies its Fabric identity.
+  /// The adapter calls this on the main thread and resolves the promise after mutation.
+  @MainActor
+  @objc(hideVideoContainer:)
+  public func hideVideoContainer(_ view: UIView) {
+    // Match the React opacity prop so Fabric can safely reuse this container.
+    view.layer.opacity = 0
+  }
+
   // MARK: - Runtime lifecycle
 
   /// Reads UIKit state on the main queue before a manager attempts to acquire the engine.

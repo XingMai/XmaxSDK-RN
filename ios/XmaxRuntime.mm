@@ -1,6 +1,7 @@
 #import "XmaxRuntime.h"
 #import "XmaxReactNativeSDK-Swift.h"
 #import <React/RCTInvalidating.h>
+#import <React/RCTViewComponentView.h>
 
 /** Adapts RN Codegen methods to the Swift native runtime implementation. */
 @interface XmaxRuntime () <RCTInvalidating>
@@ -9,6 +10,7 @@
 
 @implementation XmaxRuntime
 RCT_EXPORT_MODULE(XmaxRuntime)
+@synthesize viewRegistry_DEPRECATED = _viewRegistry_DEPRECATED;
 
 + (BOOL)requiresMainQueueSetup {
   return NO;
@@ -61,6 +63,23 @@ RCT_EXPORT_MODULE(XmaxRuntime)
 
 - (void)writeLog:(NSString *)level message:(NSString *)message option:(double)option {
   [self.implementation writeLog:level message:message option:option];
+}
+
+// Registry lookup stays in the RN adapter; Swift owns the actual view mutation.
+- (void)hideVideoContainer:(double)reactTag
+                 nativeID:(NSString *)nativeID
+                  resolve:(RCTPromiseResolveBlock)resolve
+                   reject:(RCTPromiseRejectBlock)reject {
+  __weak RCTViewRegistry *registry = self.viewRegistry_DEPRECATED;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    UIView *view = [registry viewForReactTag:@(reactTag)];
+    // Fabric stores nativeID as nativeId. Verify it before touching a recycled tag.
+    if ([view isKindOfClass:[RCTViewComponentView class]] &&
+        [((RCTViewComponentView *)view).nativeId isEqualToString:nativeID]) {
+      [self.implementation hideVideoContainer:view];
+    }
+    resolve(nil);
+  });
 }
 
 - (void)requestPermissions:(BOOL)useMicrophone

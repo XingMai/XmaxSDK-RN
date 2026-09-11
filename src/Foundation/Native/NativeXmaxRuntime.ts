@@ -11,6 +11,9 @@ export interface Spec extends TurboModule {
   /** Writes a preformatted SDK message to OSLog or Logcat without triggering LogBox. */
   writeLog(level: string, message: string, option: number): void;
 
+  /** Hides the matching SDK container on the native UI thread before RTC teardown. */
+  hideVideoContainer(reactTag: number, nativeID: string): Promise<void>;
+
   requestPermissions(useMicrophone: boolean): Promise<string>;
 
   /** Reads orientation-corrected pixel dimensions without returning pixel data to JS. */

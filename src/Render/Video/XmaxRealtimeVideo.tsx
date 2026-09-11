@@ -1,6 +1,14 @@
+import NativeRuntime from '../../Foundation/Native/NativeXmaxRuntime';
 import type { TrajectoryEffectRendering } from '../Trajectory/TrajectoryEffectRendering';
-import { useState } from 'react';
-import { StyleSheet, View, type ViewProps } from 'react-native';
+import {
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ComponentRef,
+} from 'react';
+import { findNodeHandle, StyleSheet, View, type ViewProps } from 'react-native';
 import { VideoSurface } from './XmaxVideo';
 import { videoBinding } from '../RenderController';
 import {
@@ -82,7 +90,10 @@ export function XmaxRealtimeVideo({
   );
 }
 
-/** Keeps each remote track hidden until ready, then reveals it without animation. */
+/**
+ * Reveals ready remote pixels without animation. Binding invalidation hides the
+ * whole layer in the same render that removes its canvas, matching iOS teardown.
+ */
 function RemoteVideoLayer({
   track,
   videoContentMode,
@@ -94,12 +105,49 @@ function RemoteVideoLayer({
   isInteractionEnabled: boolean;
   trajectoryRenderer: TrajectoryEffectRendering | null | undefined;
 }) {
+  const record = videoBinding(track);
+  const container = useRef<ComponentRef<typeof View>>(null);
+  const nativeID = `xmax-remote-${record?.id ?? track.id}`;
+
+  useLayoutEffect(() => {
+    if (!record) return;
+    const hide = async () => {
+      const tag = findNodeHandle(container.current);
+      if (typeof tag === 'number')
+        await NativeRuntime.hideVideoContainer(tag, nativeID);
+    };
+    record.hideBeforeRelease.add(hide);
+
+    return () => {
+      record.hideBeforeRelease.delete(hide);
+    };
+  }, [record, nativeID]);
+  const subscribe = useCallback(
+    (listener: () => void) => {
+      record?.listeners.add(listener);
+
+      return () => {
+        record?.listeners.delete(listener);
+      };
+    },
+    [record],
+  );
+
+  useSyncExternalStore(subscribe, () => record?.version ?? 0);
   const [displayed, setDisplayed] = useState(false);
+
+  // The child's onDisplayed(false) arrives from an effect after canvas removal.
+  // Read validity here so that stale readiness cannot expose the empty black layer.
+  const visible =
+    displayed && record?.valid && !record.retiring && record.confirmed;
 
   return (
     <View
-      pointerEvents={displayed ? 'auto' : 'none'}
-      style={[StyleSheet.absoluteFill, !displayed && styles.hidden]}
+      ref={container}
+      nativeID={nativeID}
+      collapsable={false}
+      pointerEvents={visible ? 'auto' : 'none'}
+      style={[StyleSheet.absoluteFill, !visible && styles.hidden]}
     >
       <VideoSurface
         isInteractionEnabled={isInteractionEnabled}
