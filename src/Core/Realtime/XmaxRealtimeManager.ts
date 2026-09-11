@@ -1,3 +1,4 @@
+import { InteractionController } from '../../Media/Interaction/InteractionController';
 import { RtcStatsLogger } from '../../Foundation/RTC/RtcStatsLogger';
 import { AppState, type NativeEventSubscription } from 'react-native';
 import type { XmaxConfiguration } from '../XmaxConfiguration';
@@ -56,6 +57,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   private readonly connection: XmaxRealtimeConnectionManager;
   private readonly generation: XmaxRealtimeGenerationManager;
   private readonly rtc: RtcManager;
+  private readonly interaction: InteractionController;
   private state: RealtimeState = Object.freeze({
     connectionState: RealtimeConnectionState.idle,
     sessionID: null,
@@ -77,13 +79,20 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   ) {
     this.options = Object.freeze({ ...options });
     this.rtc = new RtcManager();
-    this.render = new RenderController(this, this.rtc);
+    const room = new RoomController(this.rtc);
+    this.interaction = new InteractionController((taskID, points) =>
+      room.sendTracks(taskID, points),
+    );
+    this.render = new RenderController(this, this.rtc, this.interaction);
     this.media = new MediaController(this.rtc, this.render, options.model);
 
-    const room = new RoomController(this.rtc);
     const stream = new StreamController(this.rtc, room);
 
-    this.generation = new XmaxRealtimeGenerationManager(this.rtc, stream);
+    this.generation = new XmaxRealtimeGenerationManager(
+      this.rtc,
+      stream,
+      this.interaction,
+    );
     this.connection = new XmaxRealtimeConnectionManager(
       new RealtimeSessionService(
         new ApiService(
@@ -220,6 +229,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
   private fail(error: unknown): void {
+    this.interaction.stopInteraction();
     XmaxLogger.realtime.error(
       () => `Realtime failed: ${XmaxError.from(error).code}`,
     );
@@ -471,6 +481,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
   disconnect(): Promise<void> {
+    this.interaction.stopInteraction();
     return this.coordinator.interrupt(async () => {
       this.update(RealtimeConnectionState.disconnecting);
 

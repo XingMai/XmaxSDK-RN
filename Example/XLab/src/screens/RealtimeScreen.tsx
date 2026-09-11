@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { XLabTrajectoryRenderer } from '../realtime/XLabTrajectoryRenderer';
+import { uploadTouchAnimationReference } from '../realtime/TouchAnimationReference';
+import { realtimeCategories } from '../realtime/RealtimeReferenceCatalog';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AppState,
   Image,
@@ -49,14 +52,26 @@ export function RealtimeScreen({
   environment,
   onBack,
   fileURL,
+  customTrajectory = false,
+  imageContentType,
 }: {
   apiKey: string;
   environment: XmaxEnvironment;
   onBack: () => void;
   /** Omit for camera capture; otherwise keep this source readable until exit. */
   fileURL?: string;
+  /** Selects the iOS XLab pink/blue renderer for the custom rendering example. */
+  customTrajectory?: boolean;
+  imageContentType?: string | undefined;
 }) {
   const insets = useSafeAreaInsets();
+  const trajectoryRenderer = useMemo(
+    () => (customTrajectory ? new XLabTrajectoryRenderer() : null),
+    [customTrajectory],
+  );
+  const client = useRef<XmaxClient | null>(null);
+  const touchUpload = useRef<AbortController | null>(null);
+  const touchReference = useRef<string | null>(null);
   const manager = useRef<XmaxRealtimeManaging | null>(null),
     local = useRef<RealtimeMediaStream | null>(null);
   const alive = useRef(false),
@@ -74,7 +89,12 @@ export function RealtimeScreen({
     [error, setError] = useState<RealtimeErrorNotice | null>(null),
     [prompt, setPrompt] = useState('');
 
-  const nextOperation = useCallback(() => ++epoch.current, []);
+  const nextOperation = useCallback(() => {
+    touchUpload.current?.abort();
+    touchUpload.current = null;
+
+    return ++epoch.current;
+  }, []);
 
   const clearError = useCallback(() => setError(null), []);
 
@@ -127,10 +147,12 @@ export function RealtimeScreen({
   useEffect(() => {
     alive.current = true;
 
-    const realtime = new XmaxClient({
-      apiKey,
-      environment,
-    }).createRealtimeManager({ model: RealtimeModel.x2_0 });
+    const configuredClient = new XmaxClient({ apiKey, environment });
+    client.current = configuredClient;
+    touchReference.current = null;
+    const realtime = configuredClient.createRealtimeManager({
+      model: RealtimeModel.x2_0,
+    });
 
     manager.current = realtime;
     void realtime.setStateListener(value => {
@@ -171,6 +193,7 @@ export function RealtimeScreen({
     return () => {
       alive.current = false;
       nextOperation();
+      client.current = null;
       manager.current = null;
       local.current = null;
       appState.remove();
@@ -183,7 +206,7 @@ export function RealtimeScreen({
   /**
    * Mounts the remote track before starting or updating prompt/reference generation.
    */
-  const submit = async (context: RealtimeContext) => {
+  const submit = async (context: RealtimeContext, touchAnimation = false) => {
     if (!manager.current || !local.current || busy) return;
     if (!apiKey) {
       setError({ message: '请返回首页输入 API Key', permissionError: false });
@@ -204,6 +227,24 @@ export function RealtimeScreen({
     setError(null);
 
     try {
+      if (touchAnimation && fileURL && !touchReference.current) {
+        const upload = new AbortController();
+        touchUpload.current = upload;
+        const reference = await uploadTouchAnimationReference(
+          client.current!.createStorageManager(),
+          fileURL,
+          imageContentType,
+          upload.signal,
+        );
+        if (!alive.current || token !== epoch.current) return;
+        touchReference.current = reference;
+        touchUpload.current = null;
+      }
+      if (touchAnimation)
+        context = {
+          ...context,
+          referencePath: fileURL ? touchReference.current : null,
+        };
       const remote = await realtime.connect({ localStream: local.current });
 
       if (!alive.current || token !== epoch.current) return;
@@ -276,6 +317,7 @@ export function RealtimeScreen({
     <View style={styles.page}>
       <View style={[styles.preview, { marginTop: previewTop }]}>
         <XmaxRealtimeVideo
+          trajectoryRenderer={trajectoryRenderer}
           localTrack={localTrack}
           remoteTrack={remoteTrack}
           videoContentMode={
@@ -334,6 +376,19 @@ export function RealtimeScreen({
           }}
           onStop={() => {
             void stop();
+          }}
+          generating={
+            state.connectionState === RealtimeConnectionState.generating
+          }
+          onInstruction={() => {
+            void submit(
+              {
+                prompt: realtimeCategories.find(
+                  category => category.id === 'mox',
+                )!.defaultPrompt,
+              },
+              true,
+            );
           }}
           connected={connected}
           canSubmit={!busy && !!localTrack}

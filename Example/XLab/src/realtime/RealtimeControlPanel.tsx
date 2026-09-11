@@ -1,3 +1,4 @@
+import { useLocalization } from '../localization/LocalizationProvider';
 import { useEffect, useRef, useState, type ComponentRef } from 'react';
 import {
   Alert,
@@ -30,7 +31,7 @@ import {
  * Presents categories, reference selection and the free-prompt editor.
  *
  * Custom references upload independently to COS. A selected ready reference
- * submits its remote path; touch trajectories are not implemented.
+ * submits its remote path. Touch animation starts through its own preparation callback.
  */
 export function RealtimeControlPanel({
   bottomInset,
@@ -40,6 +41,8 @@ export function RealtimeControlPanel({
   onPromptChange,
   onSubmit,
   onStop,
+  onInstruction,
+  generating,
   connected,
   canSubmit,
 }: {
@@ -51,9 +54,13 @@ export function RealtimeControlPanel({
   onPromptChange: (text: string) => void;
   onSubmit: (context: RealtimeContext) => void;
   onStop: () => void;
+  /** Prepares the source reference, then starts touch animation with the iOS prompt. */
+  onInstruction: () => void;
+  generating: boolean;
   connected: boolean;
   canSubmit: boolean;
 }) {
+  const { t } = useLocalization();
   const [category, setCategory] = useState<RealtimeCategory>(
     realtimeCategories[0],
   );
@@ -61,7 +68,6 @@ export function RealtimeControlPanel({
   const [selectedID, setSelectedID] = useState<string | null>(null);
   const [promptReference, setPromptReference] =
     useState<RealtimeReference | null>(null);
-  const [instructionActive, setInstructionActive] = useState(false);
   const [editing, setEditing] = useState(false);
   const [picking, setPicking] = useState(false);
 
@@ -229,7 +235,7 @@ export function RealtimeControlPanel({
     canSubmit &&
     !!prompt.trim() &&
     (!promptReference || promptReference.uploadState === 'ready');
-  const stopEnabled = connected || selectedID !== null || instructionActive;
+  const stopEnabled = connected || selectedID !== null || generating;
 
   /**
    * Closes the editor and submits the prompt with its successfully uploaded reference.
@@ -330,7 +336,6 @@ export function RealtimeControlPanel({
           onPress={() => {
             pendingReference.current = null;
             setSelectedID(null);
-            setInstructionActive(false);
             if (connected) onStop();
           }}
           style={[styles.stop, !stopEnabled && styles.stopDisabled]}
@@ -397,22 +402,35 @@ export function RealtimeControlPanel({
         {category.content === 'instruction' && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={'触控动图暂未接入'}
-            disabled
-            accessibilityState={{ disabled: true }}
+            accessibilityLabel={t(
+              generating
+                ? 'realtime.generation.touch.active'
+                : 'realtime.generation.start',
+            )}
+            disabled={!canSubmit || generating}
+            accessibilityState={{ disabled: !canSubmit || generating }}
+            onPress={() => {
+              pendingReference.current = null;
+              setSelectedID(null);
+              onInstruction();
+            }}
             style={({ pressed }) => [
               styles.instruction,
-              instructionActive && styles.instructionActive,
+              generating && styles.instructionActive,
               pressed && styles.pressed,
             ]}
           >
             <Text
               style={[
                 styles.instructionText,
-                instructionActive && styles.instructionActiveText,
+                generating && styles.instructionActiveText,
               ]}
             >
-              触控动图暂未接入
+              {t(
+                generating
+                  ? 'realtime.generation.drag'
+                  : 'realtime.generation.start',
+              )}
             </Text>
           </Pressable>
         )}

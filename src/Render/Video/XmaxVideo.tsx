@@ -1,3 +1,5 @@
+import type { TrajectoryEffectRendering } from '../Trajectory/TrajectoryEffectRendering';
+import { TrajectoryOverlay } from '../Trajectory/TrajectoryOverlay';
 import {
   useCallback,
   useEffect,
@@ -29,6 +31,12 @@ export interface XmaxVideoProps extends ViewProps {
    * How the video scales inside the view. Defaults to VideoContentMode.fill.
    */
   videoContentMode?: VideoContentMode;
+
+  /** Enables remote trajectory input after task confirmation. Defaults to true; local tracks stay passive. */
+  isInteractionEnabled?: boolean;
+
+  /** Visual effects only. Null or omitted uses DefaultTrajectoryEffectRenderer. Use one instance per view. */
+  trajectoryRenderer?: TrajectoryEffectRendering | null | undefined;
 }
 
 interface SurfaceProps extends XmaxVideoProps {
@@ -43,6 +51,8 @@ export function VideoSurface({
   track,
   videoContentMode = VideoContentMode.fill,
   onDisplayed,
+  isInteractionEnabled = true,
+  trajectoryRenderer,
   style,
   ...props
 }: SurfaceProps) {
@@ -50,6 +60,7 @@ export function VideoSurface({
   const viewID = `xmax-${useId().replaceAll(':', '')}-${record?.id ?? 'empty'}`;
   const [loadedViewID, setLoadedViewID] = useState<string | null>(null);
   const loaded = loadedViewID === viewID;
+  const [displayedViewID, setDisplayedViewID] = useState<string | null>(null);
   const callback = useRef(onDisplayed);
 
   callback.current = onDisplayed;
@@ -75,6 +86,7 @@ export function VideoSurface({
 
   mode.current = videoContentMode;
   useEffect(() => {
+    setDisplayedViewID(null);
     callback.current?.(false);
     if (
       !loaded ||
@@ -87,6 +99,7 @@ export function VideoSurface({
 
     const stream = record.local ? null : { roomID: roomID!, userID: userID! };
     const surface = new VideoSurfaceBinding(record, viewID, stream, ready => {
+      setDisplayedViewID(ready ? viewID : null);
       callback.current?.(ready);
     });
 
@@ -126,6 +139,18 @@ export function VideoSurface({
           />
         )
       )}
+      {isInteractionEnabled &&
+        valid &&
+        record?.confirmed &&
+        record.interaction &&
+        displayedViewID === viewID && (
+          <TrajectoryOverlay
+            key={record.id}
+            binding={record}
+            contentMode={videoContentMode}
+            renderer={trajectoryRenderer}
+          />
+        )}
     </View>
   );
 }

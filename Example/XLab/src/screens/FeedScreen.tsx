@@ -53,6 +53,8 @@ export function FeedScreen({
     apiKey: string,
     environment: XmaxEnvironment,
     fileURL: string,
+    customTrajectory: boolean,
+    contentType: string | undefined,
   ) => void;
   onStorage: (apiKey: string, environment: XmaxEnvironment) => void;
   configuration: SavedConfiguration;
@@ -93,7 +95,7 @@ export function FeedScreen({
   }
 
   /** Selects an input image; the destination owns preparation and RTC resources. */
-  async function openImage() {
+  async function openImage(customTrajectory = false) {
     if (pickerOpen.current) return;
     if (!apiKey.trim()) {
       Alert.alert(t('common.notice'), t('feed.api.required'), [
@@ -118,7 +120,13 @@ export function FeedScreen({
       const fileURL = result.assets?.[0]?.uri;
 
       if (!fileURL) throw new Error(t('feed.file.error'));
-      onImage(apiKey.trim(), environment, fileURL);
+      onImage(
+        apiKey.trim(),
+        environment,
+        fileURL,
+        customTrajectory,
+        result.assets?.[0]?.type,
+      );
     } catch {
       if (mounted.current)
         Alert.alert(t('feed.image.pickError'), t('feed.image.error'), [
@@ -325,7 +333,9 @@ export function FeedScreen({
               title={t('feed.image.title')}
               subtitle={t('feed.image.subtitle')}
               capability="createLocalImageStream()"
-              onPress={openImage}
+              onPress={() => {
+                void openImage();
+              }}
             />
           </View>
           <View style={styles.section}>
@@ -347,6 +357,9 @@ export function FeedScreen({
               subtitle={t('feed.render.subtitle')}
               tags={['CANVAS', 'MULTI-TOUCH', 'CUSTOM EFFECT']}
               highlightedTag="CUSTOM EFFECT"
+              onPress={() => {
+                void openImage(true);
+              }}
             />
             <StorageFeatureCard
               onPress={() => onStorage(apiKey.trim(), environment)}

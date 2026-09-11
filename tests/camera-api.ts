@@ -1,5 +1,7 @@
 import {
   XmaxClient,
+  DefaultTrajectoryEffectRenderer,
+  type TrajectoryEffectRendering,
   RealtimeModel,
   realtimeModelSpecifications,
   CameraPosition,
@@ -47,11 +49,16 @@ export async function cameraContract(client: XmaxClient) {
   const state: RealtimeState = manager.currentState;
   const sessionID: string | null = state.sessionID;
   const taskID: string | null = state.taskID;
+  const renderer: TrajectoryEffectRendering = new DefaultTrajectoryEffectRenderer();
   const video: XmaxVideoProps = {
+    isInteractionEnabled: true,
+    trajectoryRenderer: renderer,
     track: local.videoTrack,
     videoContentMode: VideoContentMode.fit,
   };
   const realtimeVideo: XmaxRealtimeVideoProps = {
+    isInteractionEnabled: false,
+    trajectoryRenderer: null,
     localTrack: local.videoTrack,
     remoteTrack: connected.videoTrack,
   };

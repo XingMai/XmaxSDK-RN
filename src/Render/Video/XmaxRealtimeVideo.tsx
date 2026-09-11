@@ -1,3 +1,4 @@
+import type { TrajectoryEffectRendering } from '../Trajectory/TrajectoryEffectRendering';
 import { useState } from 'react';
 import { StyleSheet, View, type ViewProps } from 'react-native';
 import { VideoSurface } from './XmaxVideo';
@@ -28,6 +29,12 @@ export interface XmaxRealtimeVideoProps extends ViewProps {
    * VideoContentMode.fill.
    */
   videoContentMode?: VideoContentMode;
+
+  /** Enables remote multi-touch interaction during generation. Defaults to true. */
+  isInteractionEnabled?: boolean;
+
+  /** Custom visual renderer; null or omitted restores the SDK green glow. */
+  trajectoryRenderer?: TrajectoryEffectRendering | null | undefined;
 }
 
 /**
@@ -41,6 +48,8 @@ export function XmaxRealtimeVideo({
   localTrack,
   remoteTrack,
   videoContentMode = VideoContentMode.fill,
+  isInteractionEnabled = true,
+  trajectoryRenderer,
   style,
   ...props
 }: XmaxRealtimeVideoProps) {
@@ -55,6 +64,7 @@ export function XmaxRealtimeVideo({
   return (
     <View {...props} style={[styles.container, style]}>
       <VideoSurface
+        isInteractionEnabled={false}
         track={localTrack ?? null}
         videoContentMode={videoContentMode}
         style={StyleSheet.absoluteFill}
@@ -62,6 +72,8 @@ export function XmaxRealtimeVideo({
       {remoteTrack && (
         <RemoteVideoLayer
           key={remote?.id ?? remoteTrack.id}
+          isInteractionEnabled={isInteractionEnabled}
+          trajectoryRenderer={trajectoryRenderer}
           track={remoteTrack}
           videoContentMode={videoContentMode}
         />
@@ -74,18 +86,24 @@ export function XmaxRealtimeVideo({
 function RemoteVideoLayer({
   track,
   videoContentMode,
+  isInteractionEnabled,
+  trajectoryRenderer,
 }: {
   track: RealtimeVideoTrack;
   videoContentMode: VideoContentMode;
+  isInteractionEnabled: boolean;
+  trajectoryRenderer: TrajectoryEffectRendering | null | undefined;
 }) {
   const [displayed, setDisplayed] = useState(false);
 
   return (
     <View
-      pointerEvents="none"
+      pointerEvents={displayed ? 'auto' : 'none'}
       style={[StyleSheet.absoluteFill, !displayed && styles.hidden]}
     >
       <VideoSurface
+        isInteractionEnabled={isInteractionEnabled}
+        trajectoryRenderer={trajectoryRenderer}
         track={track}
         videoContentMode={videoContentMode}
         onDisplayed={setDisplayed}

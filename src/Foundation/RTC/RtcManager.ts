@@ -99,6 +99,7 @@ export class RtcManager {
   private closing: Promise<void> | null = null;
   private listeners = new Set<(event: RtcEvent) => void>();
   private audioVolume = 0;
+  private readonly interactionMessages = new Set<number>();
   private readonly views = new Map<string, string>();
   readonly runtime: RuntimeInfo;
 
@@ -539,7 +540,9 @@ export class RtcManager {
                   },
                 });
             },
-            onRoomMessageSendResult: (_id, error) => {
+            onRoomMessageSendResult: (id, error) => {
+              if (!current()) return;
+              const interactionMessage = this.interactionMessages.delete(id);
               // The RN wrapper exposes separate success enums for Android and iOS.
               if (
                 current() &&
@@ -548,6 +551,12 @@ export class RtcManager {
                 error !==
                   RoomMessageSendResult.ByteRTCRoomMessageSendResultSuccess
               ) {
+                if (interactionMessage) {
+                  XmaxLogger.interaction.warn(
+                    () => `Interaction sample delivery failed: ${error}`,
+                  );
+                  return;
+                }
                 XmaxLogger.room.error(
                   () => `Room signal delivery failed: ${error}`,
                 );
@@ -601,10 +610,14 @@ export class RtcManager {
     }
   }
 
-  send(message: string): void {
+  send(message: string, interaction = false): void {
     if (!this.room || !this.active) throw cancelledError();
 
-    check(this.room.sendRoomMessage(message), 'Send room signal');
+    // Bound outstanding best-effort samples if the vendor stops returning receipts.
+    if (interaction && this.interactionMessages.size >= 256) return;
+    const id = this.room.sendRoomMessage(message);
+    check(id, 'Send room signal');
+    if (interaction) this.interactionMessages.add(id);
   }
 
   setRemoteAudioVolume(volume: number): void {
@@ -662,6 +675,7 @@ export class RtcManager {
   }
 
   leave(): void {
+    this.interactionMessages.clear();
     const room = this.room;
 
     this.room = null;

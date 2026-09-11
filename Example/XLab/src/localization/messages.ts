@@ -1,6 +1,9 @@
-/** Home-screen copy mirrored from the iOS XLab string catalog; RN-only states are explicit. */
+/** XLab copy mirrored from the iOS XLab string catalog; RN-only states are explicit. */
 export const english = {
   'common.ok': 'OK',
+  'realtime.generation.start': 'Tap to generate',
+  'realtime.generation.drag': 'Drag on the video to guide the character',
+  'realtime.generation.touch.active': 'Interactive animation in progress',
   'common.notice': 'Notice',
   'language.system': 'Follow System',
   'feed.api.hide': 'Hide API Key',
@@ -51,6 +54,9 @@ export const english = {
 export type MessageKey = keyof typeof english;
 
 export const simplifiedChinese: Record<MessageKey, string> = {
+  'realtime.generation.start': '点击开始生成',
+  'realtime.generation.drag': '在画面上拖拽，用轨迹控制角色',
+  'realtime.generation.touch.active': '触控动图生成中',
   'common.ok': '知道了',
   'common.notice': '提示',
   'language.system': '跟随系统',

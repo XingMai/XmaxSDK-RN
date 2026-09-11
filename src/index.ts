@@ -46,3 +46,11 @@ export type {
   UploadFileOptions,
   DownloadFileOptions,
 } from './Core/Storage/XmaxStorageManaging';
+
+export { DefaultTrajectoryEffectRenderer } from './Render/Trajectory/DefaultTrajectoryEffectRenderer';
+
+export type {
+  TrajectoryEffectRendering,
+  TrajectoryID,
+  TrajectoryPoint,
+} from './Render/Trajectory/TrajectoryEffectRendering';

@@ -1,3 +1,4 @@
+import type { InteractionPoint } from '../../Media/Interaction/InteractionCoordinateMapper';
 import { XmaxLogger } from '../../Foundation/Logging/XmaxLogger';
 import type { RtcManager } from '../../Foundation/RTC/RtcManager';
 import type { RealtimeSessionConnection } from '../../Service/Realtime/RealtimeSessionService';
@@ -6,7 +7,7 @@ import type {
   RealtimeVideoFormat,
 } from '../../Service/Realtime/RealtimeTypes';
 import { repeatHeartbeat } from '../../Foundation/Runtime/Async';
-import { roomEvent } from './RoomEvent';
+import { roomEvent, tracksEvent } from './RoomEvent';
 import { cancelledError } from '../../Foundation/Errors/XmaxError';
 
 /**
@@ -64,6 +65,12 @@ export class RoomController {
         context,
       ),
     );
+  }
+
+  /** Sends one sampled frame; delivery failure is recoverable and must not stop generation. */
+  sendTracks(taskID: string, points: readonly InteractionPoint[]): void {
+    if (!this.connection) throw cancelledError();
+    this.rtc.send(tracksEvent(this.connection.userID, taskID, points), true);
   }
 
   leave(): void {

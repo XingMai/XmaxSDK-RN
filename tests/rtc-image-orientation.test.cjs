@@ -297,3 +297,30 @@ test('iOS acquires the engine only after main-thread preparation completes', asy
     await rtc.close();
   } finally { platform.OS = 'android'; }
 });
+
+test('interaction receipts are recoverable, bounded and cleared on leaving the room', async t => {
+  const rtc = new RtcManager(), events = [];
+  rtc.onEvent(event => events.push(event));
+  try {
+    const signal = new AbortController().signal;
+    await rtc.open(signal);
+    await rtc.join({ roomID: 'room', userID: 'user', token: 'fixture', botName: null }, false, signal);
+    const room = engines.at(-1).room;
+    let nextID = 100, sent = 0;
+    room.sendRoomMessage = () => { sent++; return nextID++; };
+    rtc.send('tracks', true);
+    room.handler.onRoomMessageSendResult(100, 3);
+    assert.equal(events.length, 0, 'A dropped track must not stop generation');
+    rtc.send('start');
+    room.handler.onRoomMessageSendResult(101, 3);
+    assert.equal(events.length, 1, 'Generation command errors retain their existing semantics');
+    for (let index = 0; index < 300; index++) rtc.send('tracks', true);
+    assert.equal(sent, 258, 'Outstanding track receipts have a finite bound');
+    room.handler.onRoomMessageSendResult(102, 0);
+    rtc.send('tracks', true);
+    assert.equal(sent, 259, 'A receipt releases its outstanding slot');
+    rtc.leave();
+    room.handler.onRoomMessageSendResult(103, 3);
+    assert.equal(events.length, 1);
+  } finally { await rtc.close(); }
+});

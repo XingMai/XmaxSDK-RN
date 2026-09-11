@@ -1,3 +1,4 @@
+import type { InteractionController } from '../../Media/Interaction/InteractionController';
 import { invalid } from '../../Foundation/Errors/XmaxError';
 import { ensureActive } from '../../Foundation/Runtime/Async';
 import { taskIDFromUUID } from '../../Foundation/Runtime/RuntimeInfo';
@@ -19,6 +20,7 @@ export class XmaxRealtimeGenerationManager {
   constructor(
     private readonly rtc: RtcManager,
     private readonly stream: StreamController,
+    private readonly interaction: InteractionController,
   ) {}
 
   async start(
@@ -38,6 +40,7 @@ export class XmaxRealtimeGenerationManager {
 
     ensureActive(signal);
     if (this.taskID) {
+      this.interaction.startInteraction(this.taskID, format);
       if (context) this.stream.updateGeneration(this.taskID, format, resolved);
 
       this.context = resolved;
@@ -59,6 +62,7 @@ export class XmaxRealtimeGenerationManager {
 
       ensureActive(signal);
       this.context = resolved;
+      this.interaction.startInteraction(taskID, format);
 
       return remote;
     } catch (error) {
@@ -75,6 +79,7 @@ export class XmaxRealtimeGenerationManager {
   }
 
   stop(): void {
+    this.interaction.stopInteraction();
     const taskID = this.taskID;
 
     this.taskID = null;

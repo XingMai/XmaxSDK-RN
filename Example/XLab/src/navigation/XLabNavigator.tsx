@@ -19,7 +19,12 @@ import { StorageScreen } from '../screens/StorageScreen';
 export type XLabStackParamList = {
   Feed: undefined;
   Camera: { environment: XmaxEnvironment };
-  Image: { environment: XmaxEnvironment; fileURL: string };
+  Image: {
+    environment: XmaxEnvironment;
+    fileURL: string;
+    customTrajectory: boolean;
+    contentType: string | undefined;
+  };
   Storage: { environment: XmaxEnvironment };
 };
 
@@ -59,9 +64,20 @@ function FeedRoute({
         if (navigation.isFocused())
           navigation.navigate('Camera', { environment });
       }}
-      onImage={(_apiKey, environment, fileURL) => {
+      onImage={(
+        _apiKey,
+        environment,
+        fileURL,
+        customTrajectory,
+        contentType,
+      ) => {
         if (navigation.isFocused())
-          navigation.navigate('Image', { environment, fileURL });
+          navigation.navigate('Image', {
+            environment,
+            fileURL,
+            customTrajectory,
+            contentType,
+          });
       }}
       onStorage={(_apiKey, environment) => {
         if (navigation.isFocused())
@@ -97,6 +113,8 @@ function ImageRoute({
       apiKey={configuration.keys[route.params.environment].trim()}
       environment={route.params.environment}
       fileURL={route.params.fileURL}
+      customTrajectory={route.params.customTrajectory}
+      imageContentType={route.params.contentType}
       onBack={navigation.goBack}
     />
   );

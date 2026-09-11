@@ -329,6 +329,31 @@ See the [example project](#example-project) for state binding and a complete imp
 
 <br>
 
+### Touch interaction and trajectory effects
+
+`XmaxVideo` and `XmaxRealtimeVideo` enable interaction by default on confirmed,
+visible remote video during generation. `isInteractionEnabled={false}` disables
+both touch sampling and effects. Local previews stay passive. The SDK maps fit/fill
+coordinates to model pixels, ignores fit black bars, and sends multi-touch `tracks`
+samples at 30 Hz, including stationary touches. Stop, disconnect, backgrounding,
+view removal and task replacement clear pending samples and animation resources.
+
+The default effect has a white core and green glow. To replace its visuals, pass a
+stable `trajectoryRenderer` implementing `TrajectoryEffectRendering`: `view` is a
+passive React element, and `renderBegan`, `renderMoved`, `renderEnded` and `reset`
+follow the iOS method names. `TrajectoryPoint` contains a stable `id`, viewport
+`location`, video-relative `normalizedLocation` and a monotonic `timestamp` in
+seconds. Use a separate renderer instance for each mounted video; replacement
+resets the previous renderer. Passing `null` restores the default.
+
+`DefaultTrajectoryEffectRenderer` can also be subclassed by overriding
+`colorsForTrajectory` with six-digit hex `core` and `glow` colors. The XLab custom
+trajectory card demonstrates alternating pink/blue fingers on image input. The
+RN effect uses bounded View primitives rather than the iOS bitmap renderer;
+device performance and exact visual parity still require device validation.
+
+<br>
+
 ### Listen for events
 
 After creating `realtime`, register the listeners you need before creating the

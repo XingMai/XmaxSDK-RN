@@ -1,3 +1,4 @@
+import type { InteractionPoint } from '../../Media/Interaction/InteractionCoordinateMapper';
 import type {
   RealtimeContext,
   RealtimeVideoFormat,
@@ -32,5 +33,19 @@ export function roomEvent(
         }
       : {}),
     runtime,
+  });
+}
+
+/** iOS tracks payload contains model pixels and identities, without runtime or input SEI. */
+export function tracksEvent(
+  userID: string,
+  taskID: string,
+  points: readonly InteractionPoint[],
+): string {
+  return JSON.stringify({
+    event: 'tracks',
+    tracks: points.map(point => [point.x, point.y]),
+    user_id: userID,
+    uid: taskID,
   });
 }

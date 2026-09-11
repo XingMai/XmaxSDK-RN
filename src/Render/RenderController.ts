@@ -1,3 +1,4 @@
+import type { InteractionController } from '../Media/Interaction/InteractionController';
 import { invalid } from '../Foundation/Errors/XmaxError';
 import type { RtcManager, RemoteStream } from '../Foundation/RTC/RtcManager';
 import type {
@@ -15,6 +16,8 @@ export interface VideoBinding {
   readonly owner: object;
   readonly rtc: RtcManager;
   readonly local: boolean;
+  /** Remote-only task interaction; local preview never sends touch samples. */
+  readonly interaction: InteractionController | null;
   valid: boolean;
   confirmed: boolean;
   format: RealtimeVideoFormat;
@@ -58,6 +61,7 @@ export class RenderController {
   constructor(
     private readonly owner: object,
     private readonly rtc: RtcManager,
+    private readonly interaction: InteractionController | null = null,
   ) {}
 
   create(
@@ -72,6 +76,7 @@ export class RenderController {
       owner: this.owner,
       rtc: this.rtc,
       local,
+      interaction: local ? null : this.interaction,
       valid: true,
       confirmed: false,
       format: Object.freeze({ ...format }),
