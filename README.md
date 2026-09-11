@@ -227,9 +227,6 @@ The iOS workspace is [`Example/XLab/ios/XLab.xcworkspace`](./Example/XLab/ios/XL
 The pinned RTC binary does not include an arm64 iOS Simulator slice; use an iPhone
 for the iOS example. Native dependency changes require rebuilding the app.
 
-See [development and troubleshooting](./docs/development.md) for toolchain setup,
-Metro connectivity, checks, and packaging details.
-
 <br>
 
 ## Quick Start
@@ -328,8 +325,7 @@ const [remoteTrack, setRemoteTrack] = useState<RealtimeVideoTrack | null>(null);
 />
 ```
 
-See the [React Native guide](./docs/public-api.md) for state binding and the
-[example project](#example-project) for a complete implementation.
+See the [example project](#example-project) for state binding and a complete implementation.
 
 <br>
 
@@ -388,7 +384,7 @@ await realtime.setErrorListener(error => {
 
 > [!TIP]
 > For complete React Native usage examples, including image inputs and reference
-> images, see the [usage guide](./docs/public-api.md).
+> images, see the [example project](./Example/XLab).
 
 <br>
 
@@ -400,8 +396,7 @@ It demonstrates real-time generation using live camera feeds and static images.
 
 <p align="center"><img src="./docs/images/xlab/home.jpg" alt="X-Lab home" width="20%" /><img src="./docs/images/xlab/features.jpg" alt="X-Lab SDK features" width="20%" /><img src="./docs/images/xlab/storage.jpg" alt="X-Lab storage service" width="20%" /><img src="./docs/images/xlab/realtime-generation.jpg" alt="X-Lab realtime generation" width="20%" /><img src="./docs/images/xlab/trajectory-generation.jpg" alt="X-Lab trajectory generation" width="20%" /></p>
 
-The galleries show the iOS XLab reference application. For the current React Native
-feature scope and device verification, see the [RN API guide](./docs/public-api.md).
+The galleries show the iOS XLab reference application.
 
 <br>
 
