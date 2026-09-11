@@ -11,11 +11,15 @@
 - Foundation：厂商适配、权限、统一错误、按 Client 配置过滤的业务状态 / 性能日志；不输出提示词、Key 或鉴权头。
 - 原生小模块：TurboModule / Codegen、相机权限、RTC owner 租约、进入后台 / runtime 销毁时直接销毁自有 RTC 引擎。HTTP 和生成控制没有复制到 Swift/Kotlin。
 
-参考 iOS 源码 HEAD 在快照时为 `f6b02899a867ebf9e2a2e1181317a20e4db78bbd`，工作区含后续修改。实施读取的文件指纹见 [camera-ios-reference.json](camera-ios-reference.json)。iOS 任务 ID 保持快照里的 `task-${base64urlUUID}?os=ios`。2026-09-10 按用户调试要求，Android 暂时去掉 `?os=android`，使用 `task-${base64urlUUID}`；发送的 start / change_condition / stop 和接收的 SEI 确认使用同一个无后缀 ID。SEI 只接受完整 taskID 或追加 `&index=<数字>`，并匹配 room / bot，不兼容旧的 Android OS 后缀。runtime.platform 仍为 android。
+参考 iOS 源码 HEAD 在快照时为 `f6b02899a867ebf9e2a2e1181317a20e4db78bbd`，工作区含后续修改。实施读取的文件指纹见 [camera-ios-reference.json](camera-ios-reference.json)。2026-09-10 按用户调试要求，RN 的 iOS 和 Android 均暂时去掉任务 ID 的 `?os=...`，统一使用 `task-${base64urlUUID}`；发送的 start / change_condition / stop 和接收的 SEI 确认使用同一个无后缀 ID。SEI 只接受完整 taskID 或追加 `&index=<数字>`，并匹配 room / bot，不兼容旧的 OS 后缀。runtime.platform 仍保留实际平台。
 
 本轮没有 createLocalImageStream、createStorageManager、轨迹交互 / isInteractionEnabled、COS、插帧、本地视频、Web 或 Expo 入口。这些仍在完整目标契约里，但不会导出无功能 API。当前导出以 `src/index.ts` 和构建生成的 `lib/typescript/index.d.ts` 为准；公开声明的正负调用覆盖在 `tests/camera-api.ts`。
 
 ## 操作语义
+
+RN 摄像头使用厂商内部采集，启动时按 RealtimeVideoFormat 将视频帧朝向设为 PORTRAIT（高大于宽）或 LANDSCAPE（其余），在进房前完成。iOS 参考实现由 AVCaptureConnection 固定采集方向，再输出 rotation0 帧；RN 通过 [setVideoOrientation](https://www.volcengine.com/docs/6348/128787) 归一化内部采集帧，避免依赖下游处理旋转元数据。该设置不应用于已归一化的外部图片帧。前置预览和编码同时镜像，后置关闭镜像。配置调用已有回归测试，后置真机上下颠倒是否消除仍需用户验证。
+
+针对用户反馈的 iOS 27 后置画面倒置，当前固定 RTC 依赖下增加临时兼容处理：仅当 iOS 主版本为 27 且使用后置摄像头时设置 setVideoCaptureRotation(VIDEO_ROTATION_180)，每次切换摄像头重新设置，前置和其余系统恢复 VIDEO_ROTATION_0。它依据系统版本与摄像头位置判断，不检测图像内容，也不代表所有 iOS 27 设备均已证实存在此问题；未扩大到 iOS 28 或 Android。测试覆盖初始后置、前后往返切换和版本边界，实际旋转效果待用户真机验证。升级厂商 SDK 时需重新评估该兼容处理。
 
 `connect({localStream})` 只创建 session、入房并发布相机；远端流可先绑定到视图。新任务的 startGeneration 等匹配 SEI，等待上限 30 秒。已生成时传新 context 发送同任务的 change_condition，成功发送即返回；传 null / 省略复用缓存，referencePath 省略或为空会清空参考图。更新发送失败保留原任务和已成功应用的 context。
 

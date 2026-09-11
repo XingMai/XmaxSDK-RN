@@ -10,10 +10,9 @@ export interface RuntimeInfo {
 
 /**
  * Encodes the runtime UUID into the task identifier format expected by the
- * room protocol. Android temporarily omits the OS suffix; iOS keeps its
- * existing identifier format.
+ * room protocol. Both platforms currently omit the OS suffix.
  */
-export function taskIDFromUUID(uuid: string, platform: string): string {
+export function taskIDFromUUID(uuid: string): string {
   const hex = uuid.replaceAll('-', '');
 
   if (!/^[a-f0-9]{32}$/i.test(hex)) throw new Error('Invalid runtime UUID');
@@ -36,7 +35,5 @@ export function taskIDFromUUID(uuid: string, platform: string): string {
     if (i + 2 < bytes.length) encoded += alphabet[value & 63]!;
   }
 
-  return platform === 'android'
-    ? `task-${encoded}`
-    : `task-${encoded}?os=${platform}`;
+  return `task-${encoded}`;
 }

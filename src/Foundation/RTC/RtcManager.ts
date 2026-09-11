@@ -6,9 +6,12 @@ import {
   StreamIndex,
   RenderMode,
   ChannelProfile,
+  RoomMessageSendResult,
   VideoCaptureConfig,
   VideoEncoderConfig,
   VideoSourceType,
+  VideoOrientation,
+  VideoRotation,
   type IEngine,
   type IRoom,
   type RemoteStreamKey,
@@ -278,6 +281,17 @@ export class RtcManager {
   ): Promise<void> {
     const engine = this.requireEngine();
 
+    // Match iOS capture: normalize camera pixels before encoding, rather than
+    // requiring downstream consumers to apply rotation metadata. External image
+    // frames are already upright and must not pass through this transform.
+    check(
+      engine.setVideoOrientation(
+        format.height > format.width
+          ? VideoOrientation.PORTRAIT
+          : VideoOrientation.LANDSCAPE,
+      ),
+      'Configure camera orientation',
+    );
     check(
       engine.setVideoCaptureConfig(
         new VideoCaptureConfig(format.width, format.height, format.fps),
@@ -376,10 +390,28 @@ export class RtcManager {
       ),
       'Switch camera',
     );
+
+    // Temporary workaround for the reported rear-camera inversion with the
+    // pinned iOS RTC SDK on iOS 27. Reset on every switch so front capture does
+    // not inherit the correction; do not extend it to unverified OS versions.
+    const compensateRearCamera =
+      Platform.OS === 'ios' &&
+      Number(this.runtime.os_version.split('.')[0]) === 27 &&
+      position === CameraPosition.back;
+
+    check(
+      await this.requireEngine().setVideoCaptureRotation(
+        compensateRearCamera
+          ? VideoRotation.VIDEO_ROTATION_180
+          : VideoRotation.VIDEO_ROTATION_0,
+      ),
+      'Set camera rotation',
+    );
     check(
       await this.requireEngine().setLocalVideoMirrorType(
+        // Match iOS: keep the front preview and the published pixels in the same orientation.
         position === CameraPosition.front
-          ? MirrorType.MIRROR_TYPE_RENDER
+          ? MirrorType.MIRROR_TYPE_RENDER_AND_ENCODER
           : MirrorType.MIRROR_TYPE_NONE,
       ),
       'Set camera mirror',
@@ -476,7 +508,14 @@ export class RtcManager {
                 });
             },
             onRoomMessageSendResult: (_id, error) => {
-              if (current() && error !== 0)
+              // The RN wrapper exposes separate success enums for Android and iOS.
+              if (
+                current() &&
+                error !==
+                  RoomMessageSendResult.ROOM_MESSAGE_SEND_RESULT_SUCCESS &&
+                error !==
+                  RoomMessageSendResult.ByteRTCRoomMessageSendResultSuccess
+              ) {
                 this.emit({
                   type: 'error',
                   error: new XmaxError({
@@ -484,6 +523,7 @@ export class RtcManager {
                     message: `Room signal delivery failed (${error})`,
                   }),
                 });
+              }
             },
           }),
           'Register room events',

@@ -112,9 +112,9 @@ test('model dimensions match iOS fixtures and bounds', () => {
   });
 });
 
-test('room payload and OS task identifier match iOS, with strict SEI matching', () => {
-  const id = taskIDFromUUID('00112233-4455-4677-8899-aabbccddeeff', 'ios');
-  assert.equal(id, 'task-ABEiM0RVRneImaq7zN3u_w?os=ios');
+test('iOS room payload omits the OS task suffix, with strict SEI matching', () => {
+  const id = taskIDFromUUID('00112233-4455-4677-8899-aabbccddeeff');
+  assert.equal(id, 'task-ABEiM0RVRneImaq7zN3u_w');
   const payload = JSON.parse(
     roomEvent(
       'start',
@@ -140,26 +140,29 @@ test('room payload and OS task identifier match iOS, with strict SEI matching', 
   assert(matchesTaskSEI(id, id));
   assert(matchesTaskSEI(id, `  ${id}&index=42\n`));
   for (const wrong of [
-    id.split('?')[0],
+    id + '?os=ios',
+    id + '?os=ios&index=42',
     id + '&index=',
     id + '&index=-1',
     id + '&index=4x',
-    id.replace('ios', 'android'),
+    id + '?os=android',
     id + 'evil',
   ])
     assert.equal(matchesTaskSEI(id, wrong), false);
 });
 
-test('Android task IDs and SEI confirmations omit the OS suffix', () => {
-  const id = taskIDFromUUID('00112233-4455-4677-8899-aabbccddeeff', 'android');
+test('both platforms use suffix-free task IDs for every command and SEI confirmation', () => {
+  const id = taskIDFromUUID('00112233-4455-4677-8899-aabbccddeeff');
   assert.equal(id, 'task-ABEiM0RVRneImaq7zN3u_w');
 
-  for (const event of ['start', 'change_condition', 'stop']) {
-    const payload = JSON.parse(
-      roomEvent(event, 'user-1', { ...runtime, platform: 'android' }, id),
-    );
-    assert.equal(payload.uid, id);
-    assert.equal(payload.runtime.platform, 'android');
+  for (const platform of ['ios', 'android']) {
+    for (const event of ['start', 'change_condition', 'stop']) {
+      const payload = JSON.parse(
+        roomEvent(event, 'user-1', { ...runtime, platform }, id),
+      );
+      assert.equal(payload.uid, id);
+      assert.equal(payload.runtime.platform, platform);
+    }
   }
 
   assert(matchesTaskSEI(id, id));
