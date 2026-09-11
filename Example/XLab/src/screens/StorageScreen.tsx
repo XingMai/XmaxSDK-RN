@@ -1,3 +1,4 @@
+import { useLocalization } from '../localization/LocalizationProvider';
 import { useEffect, useState, type ComponentProps } from 'react';
 import {
   ActivityIndicator,
@@ -38,6 +39,7 @@ export function StorageScreen({
   apiKey: string;
   environment: XmaxEnvironment;
 }) {
+  const { t } = useLocalization();
   const storage = useStorage(apiKey, environment);
   const { file, busy, result, progress, error, safe } = storage;
   const [copied, setCopied] = useState(false);
@@ -65,7 +67,7 @@ export function StorageScreen({
         <View style={styles.topBar}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="返回首页"
+            accessibilityLabel={t('common.home')}
             style={styles.back}
             onPress={onBack}
           >
@@ -75,8 +77,8 @@ export function StorageScreen({
             />
           </Pressable>
           <View style={styles.topTitles}>
-            <Label style={styles.pageTitle}>存储服务</Label>
-            <Label style={styles.platform}>EXAMPLE / REACT NATIVE</Label>
+            <Label style={styles.pageTitle}>{t('feed.storage.title')}</Label>
+            <Label style={styles.platform}>{t('storage.platform')}</Label>
           </View>
           <View style={styles.version}>
             <Label style={styles.versionText}>v{XmaxSDKInfo.version}</Label>
@@ -93,24 +95,30 @@ export function StorageScreen({
             <View style={styles.row}>
               <View style={styles.eyebrowRow}>
                 <View style={styles.dot} />
-                <Label style={styles.eyebrow}>STORAGE PIPELINE</Label>
+                <Label style={styles.eyebrow}>{t('storage.pipeline')}</Label>
               </View>
               <View style={styles.ready}>
-                <Label style={styles.readyText}>READY</Label>
+                <Label style={styles.readyText}>{t('feed.ready')}</Label>
               </View>
             </View>
-            <Label style={styles.overviewTitle}>把本地媒体交给 XmaxSDK</Label>
+            <Label style={styles.overviewTitle}>
+              {t('storage.hero.title')}
+            </Label>
             <Label style={styles.overviewSubtitle}>
-              选择图片或视频，上传后获取可直接使用的远程地址。
+              {t('storage.hero.subtitle')}
             </Label>
             <View style={styles.pipeline}>
-              <Label style={styles.pipelineLabel}>LOCAL FILE</Label>
+              <Label style={styles.pipelineLabel}>
+                {t('storage.localFile')}
+              </Label>
               <Label style={styles.separator}>—</Label>
               <Label style={[styles.pipelineLabel, styles.accent]}>
                 XMAX SDK
               </Label>
               <Label style={styles.separator}>—</Label>
-              <Label style={styles.pipelineLabel}>REMOTE URL</Label>
+              <Label style={styles.pipelineLabel}>
+                {t('storage.remoteURL')}
+              </Label>
             </View>
           </View>
           <View style={styles.card}>
@@ -118,7 +126,7 @@ export function StorageScreen({
               <View style={styles.step}>
                 <Label style={styles.stepText}>01</Label>
               </View>
-              <Label style={styles.sectionTitle}>文件预览</Label>
+              <Label style={styles.sectionTitle}>{t('storage.preview')}</Label>
               <View style={styles.flex} />
               {file && (
                 <Pressable
@@ -130,16 +138,20 @@ export function StorageScreen({
                     busy !== null && styles.disabled,
                   ]}
                 >
-                  <Label style={styles.compactText}>重新上传</Label>
+                  <Label style={styles.compactText}>
+                    {t('storage.reselect')}
+                  </Label>
                 </Pressable>
               )}
             </View>
             {file?.kind === 'video' && (
-              <Label style={styles.videoHint}>视频暂不支持安全检测</Label>
+              <Label style={styles.videoHint}>
+                {t('storage.safety.unsupported')}
+              </Label>
             )}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="选择图片或视频"
+              accessibilityLabel={t('storage.select')}
               disabled={busy !== null || file !== null}
               onPress={storage.pick}
               style={styles.picker}
@@ -173,26 +185,35 @@ export function StorageScreen({
                   </View>
                   <Label style={styles.pickerTitle}>
                     {busy === 'picking'
-                      ? '正在读取文件…'
-                      : '点击选择图片或视频'}
+                      ? t('storage.reading')
+                      : t('storage.select.hint')}
                   </Label>
-                  <Label style={styles.pickerType}>IMAGE / VIDEO</Label>
+                  <Label style={styles.pickerType}>
+                    {t('storage.mediaTypes')}
+                  </Label>
                 </>
               )}
             </Pressable>
             <View style={styles.metadata}>
               {[
                 [
-                  'type',
-                  file ? (file.kind === 'image' ? '图片' : '视频') : '--',
+                  t('storage.type'),
+                  file
+                    ? file.kind === 'image'
+                      ? t('storage.image')
+                      : t('storage.video')
+                    : '--',
                 ],
                 [
-                  'resolution',
+                  t('storage.resolution'),
                   file?.width && file.height
                     ? `${file.width} × ${file.height}`
                     : '--',
                 ],
-                ['size', file ? formatFileSize(file.byteCount) : '--'],
+                [
+                  t('storage.size'),
+                  file ? formatFileSize(file.byteCount) : '--',
+                ],
               ].map(([label, value]) => (
                 <View style={styles.metric} key={label}>
                   <Label style={styles.metricLabel}>{label}</Label>
@@ -212,11 +233,15 @@ export function StorageScreen({
                 <View style={styles.row}>
                   <Label style={styles.progressText}>
                     {fraction >= 1
-                      ? '处理中…'
-                      : `上传中 ${Math.round(fraction * 100)}%`}
+                      ? t('storage.processing')
+                      : t('storage.upload.progress', {
+                          percent: Math.round(fraction * 100),
+                        })}
                   </Label>
                   <Label style={styles.modeText}>
-                    {safe ? '安全检测上传' : '普通上传'}
+                    {safe
+                      ? t('storage.upload.safe')
+                      : t('storage.upload.normal')}
                   </Label>
                 </View>
                 <View
@@ -250,7 +275,9 @@ export function StorageScreen({
                       busy !== null && styles.disabled,
                     ]}
                   >
-                    <Label style={styles.buttonText}>安全检测上传</Label>
+                    <Label style={styles.buttonText}>
+                      {t('storage.upload.safe')}
+                    </Label>
                   </Pressable>
                 )}
                 <Pressable
@@ -264,7 +291,9 @@ export function StorageScreen({
                   ]}
                 >
                   <Label style={styles.buttonText}>
-                    {file.kind === 'image' ? '普通上传' : '上传并获取地址'}
+                    {file.kind === 'image'
+                      ? t('storage.upload.normal')
+                      : t('storage.upload.getURL')}
                   </Label>
                 </Pressable>
               </View>
@@ -273,7 +302,7 @@ export function StorageScreen({
           {error && (
             <View accessibilityRole="alert" style={styles.errorBox}>
               <Label selectable style={styles.errorText}>
-                {error}
+                {t(error)}
               </Label>
             </View>
           )}
@@ -283,21 +312,25 @@ export function StorageScreen({
                 <View style={styles.step}>
                   <Label style={styles.stepText}>02</Label>
                 </View>
-                <Label style={styles.sectionTitle}>上传结果</Label>
+                <Label style={styles.sectionTitle}>{t('storage.result')}</Label>
                 <View style={styles.flex} />
                 <View style={styles.compactButton}>
-                  <Label style={styles.compactText}>SUCCESS</Label>
+                  <Label style={styles.compactText}>
+                    {t('storage.success')}
+                  </Label>
                 </View>
               </View>
               <View style={styles.elapsedRow}>
-                <Label style={styles.elapsedLabel}>上传耗时</Label>
+                <Label style={styles.elapsedLabel}>
+                  {t('storage.elapsed')}
+                </Label>
                 <Label style={styles.elapsedValue}>
                   {result.elapsed < 1000
                     ? `${result.elapsed} ms`
                     : `${(result.elapsed / 1000).toFixed(2)} s`}
                 </Label>
               </View>
-              <Label style={styles.urlLabel}>REMOTE URL</Label>
+              <Label style={styles.urlLabel}>{t('storage.remoteURL')}</Label>
               <View style={styles.urlBox}>
                 <Label selectable style={styles.url}>
                   {result.file.url}
@@ -312,7 +345,7 @@ export function StorageScreen({
                 style={styles.button}
               >
                 <Label style={styles.buttonText}>
-                  {copied ? '已复制' : '复制地址'}
+                  {copied ? t('storage.copied') : t('storage.copy')}
                 </Label>
               </Pressable>
             </View>

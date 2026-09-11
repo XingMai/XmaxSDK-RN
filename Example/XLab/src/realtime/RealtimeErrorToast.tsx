@@ -1,3 +1,5 @@
+import type { MessageKey } from '../localization/messages';
+import { useLocalization } from '../localization/LocalizationProvider';
 import { useEffect } from 'react';
 import {
   AccessibilityInfo,
@@ -12,6 +14,8 @@ import {
 /** A new object represents each error occurrence, including repeated messages. */
 export interface RealtimeErrorNotice {
   readonly message: string;
+  /** Translate at render time so an existing notice follows language changes. */
+  readonly messageKey?: MessageKey;
   readonly permissionError: boolean;
 }
 
@@ -33,16 +37,19 @@ export function RealtimeErrorToast({
   onAction: () => void;
   onDismiss: () => void;
 }) {
+  const { t } = useLocalization();
+  const message = notice?.messageKey ? t(notice.messageKey) : notice?.message;
+
   useEffect(() => {
     if (!notice) return;
     if (Platform.OS === 'ios')
-      AccessibilityInfo.announceForAccessibility(notice.message);
+      AccessibilityInfo.announceForAccessibility(message ?? notice.message);
     if (actionLabel) return;
 
     const timer = setTimeout(onDismiss, 6000);
 
     return () => clearTimeout(timer);
-  }, [notice, actionLabel, onDismiss]);
+  }, [notice, message, actionLabel, onDismiss]);
 
   if (!notice) return null;
 
@@ -52,12 +59,12 @@ export function RealtimeErrorToast({
         <View style={styles.messageRow}>
           <ScrollView style={styles.message} bounces={false}>
             <Text style={styles.text} accessibilityLiveRegion="polite">
-              {notice.message}
+              {message}
             </Text>
           </ScrollView>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="关闭错误提示"
+            accessibilityLabel={t('common.dismissError')}
             onPress={onDismiss}
             style={styles.dismiss}
           >

@@ -14,3 +14,5 @@ JSON SHA-256：`979b8c3bc9269ad2a5199c416f682bf9cebb2c88b59b56c929f7dd2c594444f1
 2026-09-10：顶部按钮复用同一 iOS Assets.xcassets 的 `realtime_nav_back.imageset/realtime_nav_back.png` → `realtime_nav_back@3x.png`（原件 96 × 96，逻辑尺寸 32 × 32），以及 `realtime_camera_rotate.imageset/realtime_camera_rotate.png` → `realtime_camera_rotate.png`（原件 80 × 80，沿用 1× 声明，界面显示为 22 × 22）。原始图形未修改。
 
 2026-09-10：`RealtimeLoading.dataset/RealtimeLoading.gif` 原样复制为 `RealtimeLoading.gif`，用于 RealtimeLoadingOverlay 中央 54 × 50 动画。SHA-256：`7a89479c766883d2b0d2f3181d4bcc85e45e04ac27e16c5543d92e48d547d01c`。Android XLab 增加与 RN 0.87.1 相同版本的 Fresco animated-gif 3.7.0 解码支持；不向 SDK 消费者增加依赖。
+
+中英文添加参考图按钮分别原样复制 `realtime_add_reference.imageset` 和 `realtime_add_reference_en.imageset`，跟随 XLab 解析后的界面语言选择，与 iOS 一致。

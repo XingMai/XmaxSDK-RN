@@ -8,7 +8,7 @@ const ts = require('typescript');
 const filename = resolve(__dirname, '../Example/XLab/src/configuration/ConfigurationStore.ts');
 const compiled = new Module(filename, module);
 compiled.require = name => name === '@xmax/react-native-sdk'
-  ? { XmaxEnvironment: { china: 'china', global: 'global' } }
+  ? { XmaxEnvironment: { china: 'china', global: 'global' }, RealtimeModel: { x2_0: 'x2.0', x2_0_pro: 'x2.0-pro' } }
   : require(name);
 compiled._compile(ts.transpileModule(readFileSync(filename, 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
@@ -176,7 +176,7 @@ test('initial read is coalesced and input cannot race hydration', async () => {
   store.selectEnvironment('china');
   gate.resolve();
   await loading;
-  assert.equal(reads, 4);
+  assert.equal(reads, 5);
   assert.equal(store.getSnapshot().environment, 'global');
   assert.equal(store.getSnapshot().keys.china, 'stored');
 });
@@ -243,4 +243,22 @@ test('failed language writes keep the newest preference for retry', async () => 
   await reloaded.load();
   assert.equal(reloaded.getSnapshot().language, 'en');
   assert.equal(reloaded.getSnapshot().keys.china, 'saved-key');
+});
+
+
+test('model selection persists independently of keys and obsolete values fall back to X2.0', async () => {
+  const disk = storage({ china: 'cn-fixture', global: 'global-fixture' });
+  const store = new ConfigurationStore(disk);
+  await store.load();
+  assert.equal(store.getSnapshot().model, 'x2.0');
+  store.selectModel('x2.0-pro');
+  await nextTurn();
+  const reloaded = new ConfigurationStore(disk);
+  await reloaded.load();
+  assert.equal(reloaded.getSnapshot().model, 'x2.0-pro');
+  assert.deepEqual(reloaded.getSnapshot().keys, { china: 'cn-fixture', global: 'global-fixture' });
+  disk.values.set('model', 'obsolete-model');
+  const fallback = new ConfigurationStore(disk);
+  await fallback.load();
+  assert.equal(fallback.getSnapshot().model, 'x2.0');
 });

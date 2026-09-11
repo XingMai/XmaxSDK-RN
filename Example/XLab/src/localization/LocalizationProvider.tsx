@@ -12,11 +12,13 @@ import {
   systemLocale,
   translate,
   type XLabLanguage,
+  type XLabLocale,
 } from './Localization';
 import type { MessageKey } from './messages';
 
 /** React copy access for XLab; the configuration store owns preference persistence. */
 const LocalizationContext = createContext<{
+  locale: XLabLocale;
   t: (
     key: MessageKey,
     parameters?: Readonly<Record<string, string | number>>,
@@ -44,6 +46,7 @@ export function LocalizationProvider({
   const locale = resolveLocale(language, deviceLocale);
   const value = useMemo(
     () => ({
+      locale,
       t: (
         key: MessageKey,
         parameters?: Readonly<Record<string, string | number>>,
@@ -59,7 +62,7 @@ export function LocalizationProvider({
   );
 }
 
-/** Reads the current home-screen language; must be inside the app provider. */
+/** Reads the current XLab interface language; must be inside the app provider. */
 export function useLocalization() {
   const context = useContext(LocalizationContext);
 

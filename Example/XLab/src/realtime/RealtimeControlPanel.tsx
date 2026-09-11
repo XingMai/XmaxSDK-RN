@@ -18,6 +18,7 @@ import {
 import { launchImageLibrary } from 'react-native-image-picker';
 import type { RealtimeContext, XmaxEnvironment } from '@xmax/react-native-sdk';
 import { RealtimeReferenceList } from './RealtimeReferenceList';
+import { ReferenceThumbnail } from './ReferenceThumbnail';
 import { ReferenceUploadOverlay } from './ReferenceUploadOverlay';
 import { useReferenceUploads } from './useReferenceUploads';
 import {
@@ -34,6 +35,7 @@ import {
  * submits its remote path. Touch animation starts through its own preparation callback.
  */
 export function RealtimeControlPanel({
+  initialCategoryID = 'charx',
   bottomInset,
   apiKey,
   environment,
@@ -43,26 +45,32 @@ export function RealtimeControlPanel({
   onStop,
   onInstruction,
   generating,
+  generationRequested,
   connected,
   canSubmit,
 }: {
+  /** Initial tab only; selecting it does not start generation or reset later user choices. */
+  initialCategoryID?: RealtimeCategory['id'];
   /** Keeps reference thumbnails and prompt controls above the home indicator. */
   bottomInset: number;
   apiKey: string;
   environment: XmaxEnvironment;
   prompt: string;
   onPromptChange: (text: string) => void;
-  onSubmit: (context: RealtimeContext) => void;
+  onSubmit: (context: RealtimeContext, onFailure?: () => void) => void;
   onStop: () => void;
   /** Prepares the source reference, then starts touch animation with the iOS prompt. */
   onInstruction: () => void;
   generating: boolean;
+  /** Includes reference preparation and connection, before generation starts. */
+  generationRequested: boolean;
   connected: boolean;
   canSubmit: boolean;
 }) {
   const { t } = useLocalization();
   const [category, setCategory] = useState<RealtimeCategory>(
-    realtimeCategories[0],
+    realtimeCategories.find(item => item.id === initialCategoryID) ??
+      realtimeCategories[0],
   );
   const [references, setReferences] = useState(realtimeReferences);
   const [selectedID, setSelectedID] = useState<string | null>(null);
@@ -72,6 +80,8 @@ export function RealtimeControlPanel({
   const [picking, setPicking] = useState(false);
 
   const pendingReference = useRef<string | null>(null);
+  const submittedReference = useRef<string | null>(null);
+  const selectionVersion = useRef(0);
   const submitGeneration = useRef(onSubmit);
 
   submitGeneration.current = onSubmit;
@@ -99,7 +109,12 @@ export function RealtimeControlPanel({
     mounted.current = true;
 
     const lifecycle = AppState.addEventListener('change', state => {
-      if (state === 'background') pendingReference.current = null;
+      if (state === 'background') {
+        selectionVersion.current++;
+        pendingReference.current = null;
+        submittedReference.current = null;
+        setSelectedID(null);
+      }
     });
 
     return () => {
@@ -126,7 +141,6 @@ export function RealtimeControlPanel({
     if (
       !reference ||
       reference.id !== selectedID ||
-      reference.categoryID !== category.id ||
       reference.uploadState !== 'ready' ||
       !reference.referencePath ||
       !canSubmit ||
@@ -135,31 +149,64 @@ export function RealtimeControlPanel({
       return;
 
     pendingReference.current = null;
-    submitGeneration.current({
-      prompt: reference.prompt,
-      referencePath: reference.referencePath,
-    });
-  }, [references, selectedID, category.id, canSubmit]);
+    submittedReference.current = reference.id;
+    const version = selectionVersion.current;
+    submitGeneration.current(
+      {
+        prompt: reference.prompt,
+        referencePath: reference.referencePath,
+      },
+      () => {
+        if (mounted.current && selectionVersion.current === version)
+          setSelectedID(null);
+      },
+    );
+  }, [references, selectedID, canSubmit]);
 
   /** Selects a reference and waits for its upload before submitting it once. */
   function selectReference(id: string | null) {
+    // Cancelling remains available while submission is waiting for the server.
+    if (id === null) {
+      const cancelsGeneration =
+        selectedID !== null && selectedID === submittedReference.current;
+      selectionVersion.current++;
+      pendingReference.current = null;
+      setSelectedID(null);
+      if (cancelsGeneration) {
+        submittedReference.current = null;
+        onStop();
+      }
+      return;
+    }
     if (!canSubmit) return;
 
+    selectionVersion.current++;
     pendingReference.current = id;
     setSelectedID(id);
-    if (!id && connected) onStop();
+  }
+
+  /** Stops the current generation, including when another selection is still uploading. */
+  function stopGeneration() {
+    selectionVersion.current++;
+    pendingReference.current = null;
+    submittedReference.current = null;
+    setSelectedID(null);
+    onStop();
   }
 
   /**
    * Selects a category and scrolls its tab into view without clearing references.
    */
   function selectCategory(next: RealtimeCategory) {
-    pendingReference.current = null;
     setCategory(next);
+    revealCategory(next, true);
+  }
 
+  /** Keeps the selected tab visible after initial layout or a user selection. */
+  function revealCategory(next: RealtimeCategory, animated: boolean) {
     const frame = categoryFrames.current.get(next.id);
 
-    if (!frame) return;
+    if (!frame || !categoryViewport.current) return;
 
     const start = frame.x - 18,
       end = frame.x + frame.width + 18;
@@ -169,7 +216,7 @@ export function RealtimeControlPanel({
     if (start < offset || end > offset + width)
       categoryScroll.current?.scrollTo({
         x: Math.max(0, start < offset ? start : end - width),
-        animated: true,
+        animated,
       });
   }
 
@@ -181,6 +228,7 @@ export function RealtimeControlPanel({
 
     pickerOpen.current = true;
     setPicking(true);
+    const pickerVersion = selectionVersion.current;
 
     try {
       const response = await launchImageLibrary({
@@ -190,9 +238,16 @@ export function RealtimeControlPanel({
         assetRepresentationMode: 'current',
       });
 
-      if (!mounted.current || response.didCancel) return;
+      if (
+        !mounted.current ||
+        response.didCancel ||
+        pickerVersion !== selectionVersion.current
+      )
+        return;
       if (response.errorCode)
-        throw new Error(response.errorMessage || '无法读取所选图片');
+        throw new Error(
+          response.errorMessage || t('realtime.reference.readError'),
+        );
 
       const asset = response.assets?.[0];
       const uri = asset?.uri;
@@ -202,7 +257,7 @@ export function RealtimeControlPanel({
       const reference: RealtimeReference = {
         id: `custom-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         categoryID: destination.id,
-        title: '自定义参考图',
+        title: t('realtime.reference.custom'),
         iconURL: uri,
         prompt: destination.defaultPrompt,
         referencePath: null,
@@ -214,16 +269,17 @@ export function RealtimeControlPanel({
         setPromptReference(reference);
       } else {
         setReferences(current => [reference, ...current]);
+        selectionVersion.current++;
         pendingReference.current = reference.id;
         setSelectedID(reference.id);
       }
 
       uploads.start(reference, asset);
-    } catch (error) {
+    } catch {
       if (mounted.current)
         Alert.alert(
-          '无法选择参考图',
-          error instanceof Error ? error.message : '请重试',
+          t('realtime.reference.pickError'),
+          t('realtime.reference.readError'),
         );
     } finally {
       pickerOpen.current = false;
@@ -235,7 +291,8 @@ export function RealtimeControlPanel({
     canSubmit &&
     !!prompt.trim() &&
     (!promptReference || promptReference.uploadState === 'ready');
-  const stopEnabled = connected || selectedID !== null || generating;
+  const stopEnabled =
+    generationRequested || connected || selectedID !== null || generating;
 
   /**
    * Closes the editor and submits the prompt with its successfully uploaded reference.
@@ -245,7 +302,9 @@ export function RealtimeControlPanel({
 
     setEditing(false);
     Keyboard.dismiss();
+    selectionVersion.current++;
     setSelectedID(null);
+    submittedReference.current = null;
     pendingReference.current = null;
     onSubmit({ prompt, referencePath: promptReference?.referencePath ?? null });
   }
@@ -255,12 +314,12 @@ export function RealtimeControlPanel({
       accessibilityRole="button"
       accessibilityLabel={
         !promptReference
-          ? '添加自定义模式参考图'
+          ? t('realtime.reference.prompt.add')
           : promptReference.uploadState === 'uploading'
-          ? '正在上传自定义模式参考图'
+          ? t('realtime.reference.prompt.uploading')
           : promptReference.uploadState === 'failed'
-          ? '重试上传自定义模式参考图'
-          : '删除自定义模式参考图'
+          ? t('realtime.reference.prompt.retry')
+          : t('realtime.reference.prompt.delete')
       }
       accessibilityState={{
         busy: promptReference?.uploadState === 'uploading',
@@ -293,14 +352,17 @@ export function RealtimeControlPanel({
         pressed && styles.pressed,
       ]}
     >
-      <Image
-        source={
-          promptReference
-            ? { uri: promptReference.iconURL }
-            : require('../assets/realtime/realtime_prompt_add.png')
-        }
-        style={promptReference ? styles.referenceImage : styles.addIcon}
-      />
+      {promptReference ? (
+        <ReferenceThumbnail
+          uri={promptReference.iconURL}
+          style={styles.referenceImage}
+        />
+      ) : (
+        <Image
+          source={require('../assets/realtime/realtime_prompt_add.png')}
+          style={styles.addIcon}
+        />
+      )}
       {promptReference && (
         <ReferenceUploadOverlay compact state={promptReference.uploadState} />
       )}
@@ -309,7 +371,7 @@ export function RealtimeControlPanel({
   const submitButton = (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="提交自定义模式描述"
+      accessibilityLabel={t('realtime.prompt.submit')}
       disabled={!submitEnabled}
       onPress={submit}
       style={({ pressed }) => [
@@ -331,13 +393,9 @@ export function RealtimeControlPanel({
       <View style={styles.categoryRow}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="停止生成"
+          accessibilityLabel={t('realtime.generation.stop')}
           disabled={!stopEnabled}
-          onPress={() => {
-            pendingReference.current = null;
-            setSelectedID(null);
-            if (connected) onStop();
-          }}
+          onPress={stopGeneration}
           style={[styles.stop, !stopEnabled && styles.stopDisabled]}
         >
           <View style={styles.stopRing}>
@@ -351,6 +409,7 @@ export function RealtimeControlPanel({
           contentContainerStyle={styles.categories}
           onLayout={event => {
             categoryViewport.current = event.nativeEvent.layout.width;
+            revealCategory(category, false);
           }}
           onScroll={event => {
             categoryOffset.current = event.nativeEvent.contentOffset.x;
@@ -364,6 +423,7 @@ export function RealtimeControlPanel({
               accessibilityState={{ selected: category.id === item.id }}
               onLayout={event => {
                 categoryFrames.current.set(item.id, event.nativeEvent.layout);
+                if (category.id === item.id) revealCategory(item, false);
               }}
               onPress={() => selectCategory(item)}
               style={styles.category}
@@ -374,7 +434,7 @@ export function RealtimeControlPanel({
                   category.id === item.id && styles.selectedCategory,
                 ]}
               >
-                {item.name}
+                {t(`category.${item.id}`)}
               </Text>
             </Pressable>
           ))}
@@ -392,7 +452,10 @@ export function RealtimeControlPanel({
               )}
               selectedID={selectedID}
               onSelect={selectReference}
-              onRetry={uploads.retry}
+              onRetry={id => {
+                selectReference(id);
+                uploads.retry(id);
+              }}
               onAdd={() => {
                 void pickReference(item);
               }}
@@ -407,10 +470,12 @@ export function RealtimeControlPanel({
                 ? 'realtime.generation.touch.active'
                 : 'realtime.generation.start',
             )}
-            disabled={!canSubmit || generating}
-            accessibilityState={{ disabled: !canSubmit || generating }}
+            disabled={!canSubmit || generationRequested}
+            accessibilityState={{ disabled: !canSubmit || generationRequested }}
             onPress={() => {
+              selectionVersion.current++;
               pendingReference.current = null;
+              submittedReference.current = null;
               setSelectedID(null);
               onInstruction();
             }}
@@ -438,7 +503,7 @@ export function RealtimeControlPanel({
           <View style={styles.promptRow}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="编辑生成提示词"
+              accessibilityLabel={t('realtime.prompt.edit')}
               onPress={() => setEditing(true)}
               style={styles.promptField}
             >
@@ -446,7 +511,7 @@ export function RealtimeControlPanel({
                 numberOfLines={1}
                 style={[styles.promptText, !prompt && styles.placeholder]}
               >
-                {prompt || '输入你想要的效果'}
+                {prompt || t('realtime.prompt.placeholder')}
               </Text>
             </Pressable>
             {referenceButton}
@@ -475,7 +540,7 @@ export function RealtimeControlPanel({
           style={styles.editorOverlay}
         >
           <Pressable
-            accessibilityLabel="收起提示词键盘"
+            accessibilityLabel={t('realtime.prompt.dismiss')}
             style={styles.editorBackdrop}
             onPress={() => {
               setEditing(false);
@@ -489,8 +554,8 @@ export function RealtimeControlPanel({
                 autoFocus
                 multiline
                 keyboardAppearance="dark"
-                accessibilityLabel="生成提示词"
-                placeholder="输入你想要的效果"
+                accessibilityLabel={t('realtime.prompt.label')}
+                placeholder={t('realtime.prompt.placeholder')}
                 placeholderTextColor="#FFFFFF80"
                 value={prompt}
                 onChangeText={onPromptChange}

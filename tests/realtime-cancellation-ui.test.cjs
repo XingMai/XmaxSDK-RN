@@ -1,0 +1,663 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { readFileSync } = require('node:fs');
+const { resolve } = require('node:path');
+const { Module } = require('node:module');
+const ts = require('typescript');
+
+const tick = () => new Promise(resolve => setImmediate(resolve));
+
+function deferred() {
+  let resolve, reject;
+  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
+// Exercise the real screen and panel handlers with controlled async SDK results.
+// Native views are element records; hooks retain state and effect dependencies.
+function hooks() {
+  const slots = [], cleanups = [];
+  let cursor = 0, effects = [];
+  const memo = (create, deps) => {
+    const index = cursor++, previous = slots[index];
+    if (!previous || deps.some((value, i) => !Object.is(value, previous.deps[i])))
+      slots[index] = { value: create(), deps };
+    return slots[index].value;
+  };
+  return {
+    react: {
+      useState(initial) {
+        const index = cursor++;
+        if (!(index in slots)) slots[index] = initial;
+        return [slots[index], value => {
+          slots[index] = typeof value === 'function' ? value(slots[index]) : value;
+        }];
+      },
+      useRef: initial => memo(() => ({ current: initial }), []),
+      useMemo: memo,
+      useCallback: (callback, deps) => memo(() => callback, deps),
+      useEffect(effect, deps) {
+        const index = cursor;
+        memo(() => { effects.push(() => {
+          cleanups[index]?.();
+          cleanups[index] = effect();
+        }); }, deps);
+      },
+    },
+    render(Component, props) {
+      cursor = 0;
+      const tree = Component(props);
+      const pending = effects;
+      effects = [];
+      pending.forEach(effect => effect());
+      return tree;
+    },
+    dispose: () => cleanups.splice(0).forEach(cleanup => cleanup?.()),
+  };
+}
+
+const appStateListeners = new Set();
+const native = {
+  ...Object.fromEntries(['Alert', 'Image', 'KeyboardAvoidingView', 'Modal', 'Pressable',
+    'ScrollView', 'Text', 'TextInput', 'View'].map(name => [name, name])),
+  AppState: { currentState: 'active', addEventListener: (_event, listener) => {
+    appStateListeners.add(listener);
+    return { remove: () => appStateListeners.delete(listener) };
+  } },
+  Keyboard: { dismiss() {}, addListener: () => ({ remove() {} }) },
+  Platform: { OS: 'ios' },
+  StyleSheet: { create: styles => styles, absoluteFill: {} },
+};
+const catalog = {
+  realtimeCategories: [{ id: 'charx', content: 'references', name: 'Character' },
+    { id: 'mox', content: 'instruction', defaultPrompt: 'Animate' }],
+  realtimeReferences: [{ id: 'first', categoryID: 'charx', uploadState: 'ready',
+    referencePath: 'reference.jpg', prompt: 'Transform' },
+    { id: 'second', categoryID: 'charx', uploadState: 'ready', referencePath: 'second.jpg', prompt: 'Second' }],
+};
+
+function load(relative, react, mocks = {}) {
+  const filename = resolve(__dirname, '../Example/XLab/src', relative);
+  const source = ts.transpileModule(readFileSync(filename, 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022,
+      jsx: ts.JsxEmit.ReactJSX },
+  }).outputText;
+  const loaded = new Module(filename);
+  loaded.require = name => {
+    if (name === 'react') return react;
+    if (name === 'react-native') return native;
+    if (name === 'react/jsx-runtime') {
+      const jsx = (type, props) => ({ type, props });
+      return { jsx, jsxs: jsx };
+    }
+    if (name in mocks) return mocks[name];
+    if (name.endsWith('/LocalizationProvider')) return { useLocalization: () => ({ t: translateUI, locale }) };
+    if (name.endsWith('/ErrorMessages')) return load('localization/ErrorMessages.ts', {});
+    if (name.endsWith('RealtimeReferenceCatalog')) return catalog;
+    if (name.endsWith('.png')) return name;
+    throw new Error(`Missing boundary: ${name}`);
+  };
+  loaded._compile(source, filename);
+  return loaded.exports;
+}
+
+const localization = load('localization/Localization.ts', {}, {
+  './messages': load('localization/messages.ts', {}),
+});
+let locale = 'zh-Hans';
+const translateUI = (key, parameters) => localization.translate(locale, key, parameters);
+
+function find(tree, predicate) {
+  if (!tree || typeof tree !== 'object') return;
+  if (predicate(tree)) return tree;
+  for (const child of [tree.props?.children].flat(Infinity)) {
+    const found = find(child, predicate);
+    if (found) return found;
+  }
+}
+
+function panelFixture(t, initialCategoryID) {
+  const h = hooks(), submitted = [], failures = [];
+  let stopped = 0, update;
+  const { RealtimeControlPanel: Panel } = load('realtime/RealtimeControlPanel.tsx', h.react, {
+    'react-native-image-picker': {},
+    './RealtimeReferenceList': { RealtimeReferenceList: 'ReferenceList' },
+    './ReferenceThumbnail': { ReferenceThumbnail: 'Thumbnail' },
+    './ReferenceUploadOverlay': { ReferenceUploadOverlay: 'UploadOverlay' },
+    './useReferenceUploads': { useReferenceUploads: (_key, _env, callback) => { update = callback; return {}; } },
+  });
+  const props = { initialCategoryID, bottomInset: 0, prompt: '', canSubmit: true, connected: false,
+    generating: false, generationRequested: false, onSubmit: (value, failure) => { submitted.push(value); failures.push(failure); },
+    onStop: () => stopped++ };
+  const draw = () => h.render(Panel, props);
+  const list = () => find(draw(), node => node.type === 'ReferenceList').props;
+  t.after(h.dispose);
+  draw();
+  return { props, draw, list, submitted, failures, update: (...args) => update(...args), stopped: () => stopped };
+}
+
+test('selected reference and stop button remain cancellable before connection while submission is busy', t => {
+  const { props, draw, list, submitted, stopped } = panelFixture(t);
+  list().onSelect('first');
+  draw();
+  assert.equal(submitted.length, 1);
+  props.canSubmit = false;
+  props.generationRequested = true;
+  assert.equal(list().selectedID, 'first');
+  list().onSelect(null);
+  assert.equal(stopped(), 1, 'Cancellation must reach the SDK before connected state arrives');
+  assert.equal(list().selectedID, null);
+  props.canSubmit = true;
+  draw();
+  assert.equal(submitted.length, 1, 'A cancelled reference must not restart when busy clears');
+  const stop = find(draw(), node => node.props?.accessibilityLabel === '停止生成');
+  assert.equal(stop.props.disabled, false, 'Prompt/touch preparation is also cancellable');
+  stop.props.onPress();
+  assert.equal(stopped(), 2);
+});
+
+function screenFixture(t, options = {}) {
+  const h = hooks(), connect = deferred(), start = deferred(), disconnect = deferred();
+  const localTrack = { id: 'local' }, remoteTrack = { id: 'remote' };
+  let starts = 0, stops = 0, connects = 0, previews = 0, closes = 0;
+  const contexts = [], models = [];
+  const manager = {
+    setStateListener: async () => {}, setErrorListener: async () => {},
+    createLocalCameraStream: async () => { previews++; return { videoTrack: localTrack }; },
+    createLocalImageStream: async () => { previews++; return { videoTrack: localTrack }; },
+    connect: () => { connects++; return connects === 1 ? connect.promise : Promise.resolve({ videoTrack: remoteTrack }); },
+    startGeneration: ({ context }) => { contexts.push(context); starts++; return starts === 1 ? start.promise : Promise.resolve(); },
+    disconnect: () => { stops++; return disconnect.promise; },
+    close: async () => { closes++; },
+  };
+  const { RealtimeScreen: Screen } = load('screens/RealtimeScreen.tsx', h.react, {
+    '../realtime/RealtimeGenerationOperations': load('realtime/RealtimeGenerationOperations.ts', {}),
+    '../realtime/XLabTrajectoryRenderer': {},
+    '../realtime/TouchAnimationReference': { uploadTouchAnimationReference: options.prepareTouch },
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
+    '@xmax/react-native-sdk': {
+      XmaxClient: class { createRealtimeManager({ model }) { models.push(model); return manager; } createStorageManager() { return {}; } },
+      XmaxRealtimeVideo: 'Video', RealtimeModel: { x2_0: 'x2.0' }, VideoContentMode: {},
+      RealtimeConnectionState: { idle: 'idle', connecting: 'connecting', connected: 'connected',
+        generating: 'generating', disconnected: 'disconnected', error: 'error' },
+      XmaxError: { from: value => value },
+      XmaxErrorCode: { cancelled: 'CANCELLED' },
+    },
+    '../realtime/RealtimeControlPanel': { RealtimeControlPanel: 'Panel' },
+    '../realtime/RealtimeLoadingOverlay': { RealtimeLoadingOverlay: 'Loading' },
+    '../realtime/RealtimeErrorToast': { RealtimeErrorToast: 'Toast' },
+  });
+  const draw = () => h.render(Screen, { apiKey: 'fixture', environment: 'china', fileURL: options.fileURL, model: options.model });
+  const props = type => find(draw(), node => node.type === type).props;
+  t.after(() => { h.dispose(); native.AppState.currentState = 'active'; });
+  draw();
+  return { props, connect, start, disconnect, localTrack, remoteTrack, contexts, models,
+    dispose: h.dispose,
+    background(state) {
+      native.AppState.currentState = state;
+      for (const listener of appStateListeners) listener(state);
+    },
+    counts: () => ({ starts, stops, connects, previews, closes }) };
+}
+
+test('cancel during connect keeps preview, hides loading immediately and ignores a late remote track', async t => {
+  const f = screenFixture(t);
+  await tick();
+  f.props('Panel').onSubmit({ prompt: 'Transform' });
+  assert.equal(f.props('Panel').canSubmit, true, 'Loading must accept another selection');
+  await tick();
+  assert.equal(f.props('Panel').generationRequested, true);
+  f.props('Panel').onStop();
+  await tick();
+  assert.equal(f.counts().stops, 1);
+  assert.equal(f.props('Loading').loading, false);
+  assert.equal(f.props('Video').localTrack, f.localTrack);
+  assert.equal(f.props('Video').remoteTrack, null);
+  f.connect.resolve({ videoTrack: f.remoteTrack });
+  await tick();
+  assert.equal(f.counts().starts, 0);
+  assert.equal(f.props('Video').remoteTrack, null);
+  assert.equal(f.props('Panel').canSubmit, true, 'UI accepts the next intent while cleanup runs');
+  f.disconnect.resolve();
+  await tick();
+  assert.equal(f.props('Panel').canSubmit, true);
+});
+
+test('cancel keeps remote mounted for native hiding and suppresses the obsolete failure', async t => {
+  const f = screenFixture(t);
+  await tick();
+  f.props('Panel').onSubmit({ prompt: 'Transform' });
+  f.connect.resolve({ videoTrack: f.remoteTrack });
+  await tick();
+  assert.equal(f.counts().starts, 1);
+  assert.equal(f.props('Video').remoteTrack, f.remoteTrack);
+  f.props('Panel').onStop();
+  assert.equal(f.props('Video').remoteTrack, f.remoteTrack,
+    'The SDK needs the mounted container to acknowledge native hiding before RTC teardown');
+  f.start.reject({ code: 'NETWORK_ERROR', message: 'Old request failed' });
+  await tick();
+  assert.equal(f.props('Toast').notice, null);
+  assert.equal(f.props('Panel').generationRequested, false);
+  f.disconnect.resolve();
+  await tick();
+  assert.equal(f.props('Video').remoteTrack, null);
+  assert.equal(f.props('Video').localTrack, f.localTrack);
+  assert.equal(f.props('Panel').canSubmit, true);
+});
+
+test('reference replacement during loading updates selection and stale failure cannot clear it', t => {
+  const f = panelFixture(t);
+  f.list().onSelect('first');
+  f.draw();
+  f.props.generationRequested = true;
+  f.list().onSelect('second');
+  assert.equal(f.list().selectedID, 'second');
+  assert.deepEqual(f.submitted.map(value => value.referencePath), ['reference.jpg', 'second.jpg']);
+  f.failures[0]();
+  assert.equal(f.list().selectedID, 'second');
+  f.failures[1]();
+  assert.equal(f.list().selectedID, null, 'Only failure of the current selection clears it');
+});
+
+test('upload completion follows selection across category changes, and deselection prevents auto-start', t => {
+  const f = panelFixture(t);
+  f.update('first', { uploadState: 'uploading', referencePath: null });
+  f.list().onSelect('first');
+  f.draw();
+  assert.equal(f.submitted.length, 0);
+  const category = find(f.draw(), node => node.props?.onLayout &&
+    node.props?.accessibilityState?.selected === false);
+  category.props.onPress();
+  f.update('first', { uploadState: 'ready', referencePath: 'uploaded.jpg' });
+  f.draw();
+  assert.equal(f.submitted[0].referencePath, 'uploaded.jpg');
+
+  f.update('second', { uploadState: 'uploading', referencePath: null });
+  f.list().onSelect('second');
+  f.draw();
+  f.list().onSelect(null);
+  f.update('second', { uploadState: 'ready', referencePath: 'second-upload.jpg' });
+  f.draw();
+  assert.equal(f.submitted.length, 1);
+});
+
+test('A→B→C during connection starts only C after cancellation and native cleanup', async t => {
+  const f = screenFixture(t);
+  await tick();
+  f.props('Panel').onSubmit({ prompt: 'A' });
+  await tick();
+  f.props('Panel').onSubmit({ prompt: 'B' });
+  f.props('Panel').onSubmit({ prompt: 'C' });
+  await tick();
+  assert.equal(f.counts().connects, 1);
+  f.connect.resolve({ videoTrack: { id: 'obsolete' } });
+  await tick();
+  assert.equal(f.counts().starts, 0);
+  assert.equal(f.props('Loading').loading, true, 'Obsolete completion cannot hide the latest loading state');
+  f.disconnect.resolve();
+  await tick();
+  assert.equal(f.counts().connects, 2);
+  assert.deepEqual(f.contexts.map(value => value.prompt), ['C']);
+  f.start.resolve();
+  await tick();
+  assert.equal(f.props('Video').remoteTrack, f.remoteTrack);
+  assert.equal(f.props('Loading').loading, false);
+});
+
+test('replace→stop→restart while cleanup waits discards old queued selections', async t => {
+  const f = screenFixture(t);
+  await tick();
+  f.props('Panel').onSubmit({ prompt: 'A' });
+  f.connect.resolve({ videoTrack: f.remoteTrack });
+  await tick();
+  f.props('Panel').onSubmit({ prompt: 'B' });
+  f.props('Panel').onStop();
+  assert.equal(f.props('Loading').loading, false);
+  f.props('Panel').onSubmit({ prompt: 'D' });
+  f.start.reject({ code: 'CANCELLED' });
+  await tick();
+  assert.equal(f.counts().connects, 1);
+  f.disconnect.resolve();
+  await tick();
+  assert.deepEqual(f.contexts.map(value => value.prompt), ['A', 'D']);
+  assert.equal(f.props('Toast').notice, null);
+  assert.equal(f.props('Panel').generationRequested, true);
+});
+
+test('completed generation reuses its connection when another context is selected', async t => {
+  const f = screenFixture(t);
+  await tick();
+  f.connect.resolve({ videoTrack: f.remoteTrack });
+  f.start.resolve();
+  f.props('Panel').onSubmit({ prompt: 'A' });
+  await tick();
+  f.props('Panel').onSubmit({ prompt: 'B' });
+  await tick();
+  assert.deepEqual(f.contexts.map(value => value.prompt), ['A', 'B']);
+  assert.equal(f.counts().stops, 0, 'Context updates do not disconnect completed generation');
+});
+
+test('background→foreground→background discards pending generation and stale preview recovery', async t => {
+  const f = screenFixture(t);
+  await tick();
+  f.props('Panel').onSubmit({ prompt: 'A' });
+  await tick();
+  f.props('Panel').onSubmit({ prompt: 'B' });
+  f.background('background');
+  f.background('active');
+  f.background('background');
+  f.connect.resolve({ videoTrack: f.remoteTrack });
+  f.disconnect.resolve();
+  await tick();
+  assert.equal(f.counts().starts, 0);
+  assert.equal(f.counts().previews, 1);
+  assert.equal(f.props('Video').localTrack, null);
+  f.background('active');
+  await tick();
+  assert.equal(f.counts().previews, 2);
+  assert.equal(f.counts().starts, 0, 'Foreground recovery restores only local preview');
+});
+
+test('unmount cancels pending replacements before releasing the manager', async t => {
+  const f = screenFixture(t);
+  await tick();
+  f.props('Panel').onSubmit({ prompt: 'A' });
+  await tick();
+  f.props('Panel').onSubmit({ prompt: 'B' });
+  f.dispose();
+  f.connect.resolve({ videoTrack: f.remoteTrack });
+  f.disconnect.resolve();
+  await tick();
+  assert.equal(f.counts().starts, 0);
+  assert.equal(f.counts().closes, 1);
+});
+
+test('switching from touch preparation to a reference aborts the upload and ignores its late result', async t => {
+  const uploaded = deferred();
+  let uploadSignal;
+  const f = screenFixture(t, {
+    fileURL: 'file:///input.jpg',
+    prepareTouch: (_storage, _file, _type, signal) => { uploadSignal = signal; return uploaded.promise; },
+  });
+  await tick();
+  f.props('Panel').onInstruction();
+  await tick();
+  assert.equal(f.counts().connects, 0);
+  f.props('Panel').onSubmit({ prompt: 'Reference', referencePath: 'new.jpg' });
+  assert.equal(uploadSignal.aborted, true);
+  f.disconnect.resolve();
+  await tick();
+  assert.equal(f.counts().connects, 0, 'Wait for the owned temporary upload to unwind');
+  uploaded.resolve('obsolete-touch.jpg');
+  f.connect.resolve({ videoTrack: f.remoteTrack });
+  f.start.resolve();
+  await tick();
+  assert.deepEqual(f.contexts, [{ prompt: 'Reference', referencePath: 'new.jpg' }]);
+  assert.equal(f.props('Toast').notice, null);
+});
+
+test('only the latest failing request reports failure after cleanup, and a later request can retry', async t => {
+  const f = screenFixture(t);
+  let failures = 0;
+  await tick();
+  f.props('Panel').onSubmit({ prompt: 'A' }, () => failures++);
+  f.connect.resolve({ videoTrack: f.remoteTrack });
+  await tick();
+  f.start.reject({ code: 'NETWORK_ERROR', message: 'Generation failed' });
+  await tick();
+  assert.equal(failures, 0);
+  f.disconnect.resolve();
+  await tick();
+  assert.equal(failures, 1);
+  assert.equal(f.props('Panel').generationRequested, false);
+  assert.equal(f.props('Video').remoteTrack, null);
+  f.props('Panel').onSubmit({ prompt: 'Retry' });
+  await tick();
+  assert.equal(f.props('Toast').notice, null);
+  assert.deepEqual(f.contexts.map(value => value.prompt), ['A', 'Retry']);
+});
+
+test('rapid thumbnail presses do not start scrolling or move visible tap targets', t => {
+  const h = hooks(), scrolls = [], selections = [];
+  const { RealtimeReferenceList: List } = load('realtime/RealtimeReferenceList.tsx', h.react, {
+    './ReferenceThumbnail': { ReferenceThumbnail: 'Thumbnail' },
+    './ReferenceUploadOverlay': { ReferenceUploadOverlay: 'UploadOverlay' },
+  });
+  const props = {
+    references: Array.from({ length: 12 }, (_, index) => ({
+      id: String(index), title: `Reference ${index}`, uploadState: 'ready', iconURL: 'fixture.jpg',
+    })),
+    selectedID: null, visible: true, picking: false,
+    onSelect: id => { props.selectedID = id; selections.push(id); },
+  };
+  const draw = () => h.render(List, props);
+  const scroll = () => find(draw(), node => node.type === 'ScrollView').props;
+  scroll().ref.current = { scrollTo: value => scrolls.push(value) };
+  find(draw(), node => node.props?.onLayout).props.onLayout({ nativeEvent: { layout: { width: 240 } } });
+  for (const id of ['0', '1', '2', '1', '1']) {
+    find(draw(), node => node.props?.accessibilityLabel === `Reference ${id}`).props.onPress();
+    draw();
+  }
+  assert.deepEqual(selections, ['0', '1', '2', '1', null]);
+  assert.deepEqual(scrolls, [], 'Selection must not create the animation that captures subsequent presses');
+
+  props.selectedID = '8';
+  draw();
+  assert.deepEqual(scrolls, [{ x: 224, animated: false }]);
+  scroll().onScroll({ nativeEvent: { contentOffset: { x: 224 } } });
+  props.selectedID = '7';
+  draw();
+  assert.equal(scrolls.length, 1, 'An already visible selection must stay in place');
+  // A user drag can move the selected thumbnail offscreen without an auto-scroll tug-of-war.
+  scroll().onScroll({ nativeEvent: { contentOffset: { x: 0 } } });
+  draw();
+  assert.equal(scrolls.length, 1);
+  t.after(h.dispose);
+});
+
+
+test('language changes update realtime controls without restarting media or rewriting prompts', async t => {
+  t.after(() => { locale = 'zh-Hans'; });
+  const f = screenFixture(t);
+  await tick();
+  f.props('Panel').onPromptChange('Keep this exact prompt');
+  const before = f.counts();
+  locale = 'en';
+  assert.equal(f.props('Pressable')?.accessibilityLabel, 'Back to Home');
+  assert.equal(f.props('Panel').prompt, 'Keep this exact prompt');
+  await tick();
+  assert.deepEqual(f.counts(), before, 'Language changes must not recreate the realtime manager');
+  const panel = panelFixture(t);
+  assert(find(panel.draw(), node => node.props?.accessibilityLabel === 'Stop generation'));
+  locale = 'zh-Hans';
+  assert(find(panel.draw(), node => node.props?.accessibilityLabel === '停止生成'));
+});
+
+test('storage selection, progress, safety errors and results follow the current language', t => {
+  t.after(() => { locale = 'zh-Hans'; });
+  const h = hooks();
+  t.after(h.dispose);
+  const storage = { file: null, busy: null, result: null, progress: null, error: null, safe: false };
+  const { StorageScreen: Screen } = load('screens/StorageScreen.tsx', h.react, {
+    'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
+    '@xmax/react-native-sdk': { RealtimeModel: { x2_0: 'x2.0', x2_0_pro: 'x2.0-pro' }, XmaxSDKInfo: { version: '1.0.0' } },
+    '@react-native-clipboard/clipboard': { setString() {} },
+    'react-native-video': 'Video',
+    '../storage/useStorage': { useStorage: () => storage, formatFileSize: () => '1 KB' },
+  });
+  const draw = () => h.render(Screen, { apiKey: '', environment: 'china', onBack() {} });
+  assert(find(draw(), node => node.props?.children === '文件预览'));
+  locale = 'en';
+  assert(find(draw(), node => node.props?.children === 'File Preview'));
+  assert(find(draw(), node => node.props?.accessibilityLabel === 'Select an image or video'));
+  storage.file = { kind: 'image', fileURL: 'file:///image.jpg', width: 32, height: 64, byteCount: 1024 };
+  storage.busy = 'uploading';
+  storage.safe = true;
+  storage.progress = { fractionCompleted: 0.42 };
+  assert(find(draw(), node => node.props?.children === 'Uploading 42%'));
+  assert(find(draw(), node => node.props?.children === 'Upload & check'));
+  storage.busy = null;
+  storage.error = 'storage.unsafe';
+  assert(find(draw(), node => node.props?.children === translateUI('storage.unsafe')));
+  storage.result = { elapsed: 350, file: { url: 'https://example.com/result.jpg' } };
+  assert(find(draw(), node => node.props?.children === 'Upload Result'));
+  locale = 'zh-Hans';
+  assert(find(draw(), node => node.props?.children === '上传结果'));
+  assert(find(draw(), node => node.props?.children === translateUI('storage.unsafe')));
+});
+
+
+test('locale selects the API environment and key slot for every feature route', t => {
+  t.after(() => { locale = 'zh-Hans'; });
+  const configuration = { keys: { china: 'cn-fixture', global: 'global-fixture' },
+    environment: 'china', model: 'x2.0-pro', language: 'en', loaded: true };
+  const writes = [], routes = [];
+  const context = { configuration, store: { setKey: (...args) => writes.push(args), selectLanguage() {}, selectModel: model => { configuration.model = model; } } };
+  const react = { createContext: () => ({ Provider: 'Provider' }), useContext: () => context };
+  const sdk = { XmaxEnvironment: { china: 'china', global: 'global' } };
+  const localized = load('configuration/LocalizedConfiguration.ts', {}, { '@xmax/react-native-sdk': sdk });
+  const { XLabNavigator } = load('navigation/XLabNavigator.tsx', react, {
+    '../configuration/LocalizedConfiguration': localized,
+    '@react-navigation/native': { NavigationContainer: 'Navigation', DarkTheme: {} },
+    '@react-navigation/native-stack': { createNativeStackNavigator: () => ({ Navigator: 'Navigator', Screen: 'Screen' }) },
+    '../screens/FeedScreen': { FeedScreen: 'Feed' },
+    '../screens/CameraScreen': { CameraScreen: 'Camera' },
+    '../screens/RealtimeScreen': { RealtimeScreen: 'Realtime' },
+    '../screens/StorageScreen': { StorageScreen: 'Storage' },
+  });
+  const tree = XLabNavigator(context);
+  const routeComponent = name => find(tree, node => node.props?.name === name).props.component;
+  const navigation = { isFocused: () => true, navigate: (...args) => routes.push(args) };
+  locale = 'en';
+  const english = routeComponent('Feed')({ navigation }).props;
+  assert.equal(english.configuration.environment, 'global', 'Old persisted China environment must not override English UI');
+  english.onAPIKeyChange('new-global');
+  assert.deepEqual(writes.at(-1), ['global', 'new-global']);
+  english.onModelChange('x2.0');
+  assert.equal(configuration.model, 'x2.0');
+  english.onModelChange('x2.0-pro');
+  english.onCamera('global-fixture', english.configuration.environment);
+  assert.deepEqual(routes.at(-1), ['Camera', { environment: 'global', model: 'x2.0-pro' }]);
+  for (const name of ['Camera', 'Image', 'Storage']) {
+    const props = routeComponent(name)({ route: { params: { environment: 'global', model: 'x2.0-pro' } }, navigation }).props;
+    if (name !== 'Storage') assert.equal(props.model, 'x2.0-pro');
+    assert.equal(props.environment, 'global');
+    assert.equal(props.apiKey, 'global-fixture');
+  }
+  locale = 'zh-Hans';
+  const chinese = routeComponent('Feed')({ navigation }).props;
+  assert.equal(chinese.configuration.environment, 'china');
+  chinese.onAPIKeyChange('new-cn');
+  assert.deepEqual(writes.at(-1), ['china', 'new-cn']);
+  assert.equal(routeComponent('Storage')({ route: { params: { environment: 'global' } }, navigation }).props.apiKey,
+    'global-fixture', 'An existing route must not switch credentials mid-session');
+  configuration.keys.global = '';
+  locale = 'en';
+  const empty = routeComponent('Feed')({ navigation }).props.configuration;
+  assert.equal(empty.keys[empty.environment], '', 'A missing overseas key must never fall back to the China key');
+});
+
+test('the reference picker uses the iOS artwork for each resolved locale', t => {
+  t.after(() => { locale = 'zh-Hans'; });
+  const h = hooks();
+  t.after(h.dispose);
+  const { RealtimeReferenceList } = load('realtime/RealtimeReferenceList.tsx', h.react, {
+    './ReferenceThumbnail': { ReferenceThumbnail: 'Thumbnail' },
+    './ReferenceUploadOverlay': { ReferenceUploadOverlay: 'UploadOverlay' },
+  });
+  const draw = () => h.render(RealtimeReferenceList, { references: [], selectedID: null, visible: true, picking: false });
+  assert.equal(find(draw(), node => node.type === 'Image').props.source, '../assets/realtime/realtime_add_reference.png');
+  locale = 'en';
+  assert.equal(find(draw(), node => node.type === 'Image').props.source, '../assets/realtime/realtime_add_reference_en.png');
+});
+
+test('all home feature entries require the current environment key before navigation or image picking', async t => {
+  const h = hooks(), alerts = [], navigations = [];
+  let picks = 0;
+  const originalAlert = native.Alert;
+  native.Alert = { alert: (...args) => alerts.push(args) };
+  t.after(() => { native.Alert = originalAlert; locale = 'zh-Hans'; h.dispose(); });
+  const { FeedScreen } = load('screens/FeedScreen.tsx', h.react, {
+    'react-native-image-picker': { launchImageLibrary: async () => {
+      picks++;
+      return { assets: [{ uri: 'file:///fixture.jpg', type: 'image/jpeg' }] };
+    } },
+    'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
+    '@xmax/react-native-sdk': { XmaxEnvironment: { china: 'china', global: 'global' }, RealtimeModel: { x2_0: 'x2.0', x2_0_pro: 'x2.0-pro' }, XmaxSDKInfo: { version: '1.0.0' } },
+    '../theme/tokens': { colors: {}, feedFont: value => value },
+    '../components/FeedLanguageButton': { FeedLanguageButton: 'Language' },
+    '../components/StorageFeatureCard': { StorageFeatureCard: 'Storage' },
+    '../components/FeedPipelineCard': { FeedPipelineCard: 'Pipeline' },
+    '../components/FeedFeatureCard': { FeedFeatureCard: 'Feature' },
+  });
+  const configuration = { keys: { china: 'cn-fixture', global: '' }, environment: 'global', language: 'en', loaded: true };
+  const props = { configuration, onCamera: (...args) => navigations.push(['camera', ...args]),
+    onImage: (...args) => navigations.push(['image', ...args]), onStorage: (...args) => navigations.push(['storage', ...args]) };
+  const draw = () => h.render(FeedScreen, props);
+  const press = target => {
+    const tree = draw();
+    find(tree, node => target === 'camera' || target === 'image'
+      ? node.type === 'Pipeline' && node.props.sequence === (target === 'camera' ? '01' : '02')
+      : node.type === target).props.onPress();
+  };
+  locale = 'en';
+  for (const empty of ['', ' \n\t ']) {
+    configuration.keys.global = empty;
+    for (const target of ['camera', 'image', 'Feature', 'Storage']) press(target);
+  }
+  assert.equal(alerts.length, 8);
+  assert.equal(alerts[0][1], 'Please enter your API Key first');
+  assert.equal(picks, 0, 'Missing keys must be rejected before photo permissions or picker UI');
+  assert.deepEqual(navigations, [], 'A saved China key cannot authorize overseas entry');
+  locale = 'zh-Hans';
+  configuration.environment = 'china';
+  configuration.keys.china = '';
+  press('camera');
+  assert.equal(alerts.at(-1)[1], '请先输入 API Key');
+  configuration.keys.china = '  cn-fixture  ';
+  press('camera');
+  press('Storage');
+  press('image');
+  await tick();
+  press('Feature');
+  await tick();
+  assert.equal(picks, 2);
+  assert.deepEqual(navigations.map(value => value.slice(0, 3)), [
+    ['camera', 'cn-fixture', 'china'], ['storage', 'cn-fixture', 'china'],
+    ['image', 'cn-fixture', 'china'], ['image', 'cn-fixture', 'china'],
+  ]);
+  assert.equal(navigations[2][4], false);
+  assert.equal(navigations[3][4], true);
+});
+
+
+test('image input opens on touch animation without automatically generating; camera keeps its default', async t => {
+  const image = screenFixture(t, { fileURL: 'file:///fixture.jpg' });
+  const camera = screenFixture(t);
+  await tick();
+  assert.equal(image.props('Panel').initialCategoryID, 'mox');
+  assert.equal(camera.props('Panel').initialCategoryID, 'charx');
+  const panel = panelFixture(t, image.props('Panel').initialCategoryID);
+  assert(find(panel.draw(), node => node.props?.children === '点击开始生成'));
+  assert.equal(panel.submitted.length, 0);
+  assert.equal(image.counts().connects, 0);
+  assert.equal(image.counts().starts, 0);
+  assert.equal(camera.counts().starts, 0);
+  const character = find(panel.draw(), node => node.props?.accessibilityState?.selected === false &&
+    node.props?.children?.props?.children === '换形象');
+  character.props.onPress();
+  assert.equal(panel.list().visible, true, 'A manual tab choice persists across subsequent renders');
+});
+
+
+test('XLab initializes camera and image managers with the route-selected Pro model', async t => {
+  const camera = screenFixture(t, { model: 'x2.0-pro' });
+  const image = screenFixture(t, { model: 'x2.0-pro', fileURL: 'file:///image.jpg' });
+  await tick();
+  assert.deepEqual(camera.models, ['x2.0-pro']);
+  assert.deepEqual(image.models, ['x2.0-pro']);
+  camera.props('Panel');
+  image.props('Panel');
+  assert.equal(camera.models.length, 1);
+  assert.equal(image.models.length, 1);
+});

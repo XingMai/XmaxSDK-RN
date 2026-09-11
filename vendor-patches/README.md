@@ -11,7 +11,7 @@
 | Android Java target 8 → 17 | 随包 Java 使用较新语法，与固定 JDK / RN 目标一致 |
 | Android buildFeatures.buildConfig=true | 模块声明自定义 BuildConfig 字段，AGP 9 默认不生成 |
 | iOS / Android extends.d.ts 缺失 hybrid-runtime 导入 | 运行时代码已内嵌，发布包缺声明；补其 NativeView 的实际签名，不安装未公开包 |
-| 两个 JS 入口空 viewId → null | 原实现为解绑创建一个空 ID 的假视图；改为传递真正的空视图 |
+| 两个 JS 入口的空 viewId 解绑 | 不再创建空 ID 的假视图；Android 显式传 null，iOS 使用新建画布默认的 nil view，避免桥接把 JS null 写成 NSNull 引发 bounds 崩溃 |
 
 Android 原生 POM 还引入 Support Library 28，XLab 使用 Jetifier 做 AndroidX 迁移。此项是宿主配置，未在厂商包里随意 exclude 原生库。
 

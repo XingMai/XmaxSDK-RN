@@ -410,7 +410,7 @@ test('camera validates buckets before permission and preserves accepted dimensio
     assert.equal(rtc.permissionCalls, 0);
     assert.equal(rtc.camera, false);
     const defaultStream = await manager.createLocalCameraStream();
-    assert.deepEqual(defaultStream.videoTrack.videoFormat, { width: 1024, height: 1920, fps: 24 });
+    assert.deepEqual(defaultStream.videoTrack.videoFormat, { width: 1024, height: 1920, fps: 30 });
     await manager.stopLocalCameraStream();
     for (const videoFormat of [
       { width: 1024, height: 1920, fps: 15 },
@@ -465,7 +465,7 @@ test('image buckets reject unsupported explicit and source sizes before preparat
     }
     t.mock.method(images, 'size', async () => ({ width: 1920, height: 1024 }));
     const local = await manager.createLocalImageStream({ fileURL: '/image.jpg' });
-    assert.deepEqual(local.videoTrack.videoFormat, { width: 1920, height: 1024, fps: 24 });
+    assert.deepEqual(local.videoTrack.videoFormat, { width: 1920, height: 1024, fps: 30 });
   } finally {
     await manager.close();
   }
@@ -549,6 +549,58 @@ test('close during POST stops camera immediately and reclaims late session; mana
   });
   await manager.close();
   assert.equal(lifecycleListeners.size, 0);
+});
+
+test('XLab replacement queue serializes real SDK cancellation, late session cleanup and context updates', async t => {
+  const { readFileSync } = require('node:fs');
+  const { resolve } = require('node:path');
+  const { Module } = require('node:module');
+  const ts = require('typescript');
+  const file = resolve(__dirname, '../Example/XLab/src/realtime/RealtimeGenerationOperations.ts');
+  const loaded = new Module(file);
+  loaded._compile(ts.transpileModule(readFileSync(file, 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText, file);
+  const firstPost = defer(), requests = [];
+  let posts = 0;
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    requests.push(init.method);
+    if (init.method === 'POST') {
+      if (++posts === 1) return firstPost.promise;
+      return response(sessionPayload);
+    }
+    return response({});
+  });
+  const manager = createManager();
+  t.after(() => manager.close());
+  const queue = new loaded.exports.RealtimeGenerationOperations(() => manager.disconnect());
+  const local = await manager.createLocalCameraStream();
+  const rtc = FakeRtc.instances.at(-1);
+  const start = prompt => queue.run(async signal => {
+    await manager.connect({ localStream: local });
+    if (!signal.aborted) await manager.startGeneration({ context: { prompt } });
+  });
+  const a = start('A');
+  await nextTurn();
+  const b = start('B'), c = start('C');
+  await nextTurn();
+  assert.equal(posts, 1);
+  assert.equal(rtc.camera, true);
+  firstPost.resolve(response(sessionPayload));
+  await nextTurn();
+  const packet = rtc.packets.find(value => value.event === 'start');
+  assert.equal(packet.params.prompt, 'C');
+  assert.deepEqual(requests.slice(0, 3), ['POST', 'DELETE', 'POST']);
+  rtc.emit({ type: 'sei', stream: { roomID: 'room-1', userID: 'bot-1' }, message: packet.uid });
+  await Promise.all([a, b, c]);
+  await start('D');
+  assert.equal(posts, 2, 'A finished generation reuses its connection');
+  const change = rtc.packets.find(value => value.event === 'change_condition');
+  assert.equal(change.params.prompt, 'D');
+  assert.equal(change.uid, packet.uid);
+  await queue.cancel();
+  assert.equal(rtc.camera, true);
+  assert.equal(manager.currentState.connectionState, 'Disconnected');
 });
 
 test('generation requires task + room + bot SEI, updates reuse task, disconnect preserves camera', async t => {

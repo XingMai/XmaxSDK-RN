@@ -329,6 +329,21 @@ See the [example project](#example-project) for state binding and a complete imp
 
 <br>
 
+### Realtime models
+
+Select `RealtimeModel.x2_0_pro` when creating a realtime manager or media service.
+XLab offers both models on Home and remembers the selected model for future sessions.
+
+| Model | Default camera format | Input resolution policy |
+| --- | --- | --- |
+| `x2_0` (`x2.0`) | 832 × 1472 at 24 fps | 600,000–1,280,000 pixels; dimensions aligned to 32 |
+| `x2_0_pro` (`x2.0-pro`) | 1024 × 1920 at 30 fps | Exactly 1024 × 1920 or 1920 × 1024 |
+
+Pro follows the iOS SDK: unsupported input dimensions are rejected, not automatically
+resized to a bucket. Image sources use the model's default frame rate when omitted;
+explicit valid frame rates are preserved. The Pro maximum input pixel metadata is
+2,100,000, though fixed resolution buckets take precedence over pixel bounds.
+
 ### Touch interaction and trajectory effects
 
 `XmaxVideo` and `XmaxRealtimeVideo` enable interaction by default on confirmed,

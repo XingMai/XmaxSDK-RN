@@ -1,6 +1,6 @@
 import { english, simplifiedChinese, type MessageKey } from './messages';
 
-/** Persisted UI preference; system follows the device locale without changing API environment. */
+/** Persisted UI preference; system follows the device locale. XLab uses the resolved locale to select its API environment. */
 export type XLabLanguage = 'system' | 'zh-Hans' | 'en';
 
 export type XLabLocale = Exclude<XLabLanguage, 'system'>;

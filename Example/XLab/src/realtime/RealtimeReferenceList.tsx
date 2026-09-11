@@ -1,3 +1,4 @@
+import { useLocalization } from '../localization/LocalizationProvider';
 import { useEffect, useRef, useState, type ComponentRef } from 'react';
 import {
   Animated,
@@ -9,6 +10,11 @@ import {
 } from 'react-native';
 import type { RealtimeReference } from './RealtimeReferenceCatalog';
 import { ReferenceUploadOverlay } from './ReferenceUploadOverlay';
+import { ReferenceThumbnail } from './ReferenceThumbnail';
+
+const thumbnailSize = 44;
+const thumbnailGap = 8;
+const thumbnailStride = thumbnailSize + thumbnailGap;
 
 /**
  * Animates the scroll-edge shading without intercepting thumbnail touches.
@@ -43,8 +49,8 @@ function EdgeFade({ visible, left }: { visible: boolean; left?: boolean }) {
 /**
  * Displays a category's reference thumbnails beside a fixed add button.
  *
- * Selection belongs to the parent. Selecting the same item clears it; a new
- * selection scrolls into the center of the visible list.
+ * Selection belongs to the parent. Selecting the same item clears it. Visible
+ * thumbnails stay still so consecutive taps are not captured by scroll animations.
  */
 export function RealtimeReferenceList({
   references,
@@ -63,11 +69,14 @@ export function RealtimeReferenceList({
   visible: boolean;
   picking: boolean;
 }) {
+  const { t, locale } = useLocalization();
   const list = useRef<ComponentRef<typeof ScrollView>>(null);
+  const currentOffset = useRef(0);
 
   const [width, setWidth] = useState(0);
   const [offset, setOffset] = useState(0);
-  const contentWidth = references.length * 60 - 10 + 16;
+  const contentWidth =
+    Math.max(0, references.length * thumbnailStride - thumbnailGap) + 16;
   const selectedIndex = references.findIndex(item => item.id === selectedID);
 
   useEffect(() => {
@@ -75,26 +84,39 @@ export function RealtimeReferenceList({
 
     if (selectedIndex < 0) return;
 
-    list.current?.scrollTo({
-      x: Math.max(
-        0,
-        Math.min(contentWidth - width, selectedIndex * 60 + 27 - width / 2),
-      ),
-      animated: true,
-    });
+    const left = selectedIndex * thumbnailStride;
+    const right = left + thumbnailSize + 4; // Include the selection border.
+    const current = currentOffset.current;
+    if (left >= current && right <= current + width) return;
+
+    const next = Math.max(
+      0,
+      Math.min(contentWidth - width, left < current ? left : right - width),
+    );
+    if (Math.abs(next - current) < 0.5) return;
+
+    // Only reveal offscreen selections (e.g. returning to a category). Animated
+    // scrollTo makes RN ScrollView capture the next press to stop its animation.
+    currentOffset.current = next;
+    setOffset(next);
+    list.current?.scrollTo({ x: next, animated: false });
   }, [visible, selectedID, selectedIndex, width, contentWidth]);
 
   return (
     <View style={[styles.row, !visible && styles.hidden]}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="添加参考图"
+        accessibilityLabel={t('realtime.reference.add')}
         disabled={picking}
         onPress={onAdd}
         style={({ pressed }) => [styles.add, pressed && styles.pressed]}
       >
         <Image
-          source={require('../assets/realtime/realtime_add_reference.png')}
+          source={
+            locale === 'zh-Hans'
+              ? require('../assets/realtime/realtime_add_reference.png')
+              : require('../assets/realtime/realtime_add_reference_en.png')
+          }
           style={styles.image}
         />
       </Pressable>
@@ -105,20 +127,34 @@ export function RealtimeReferenceList({
         <ScrollView
           ref={list}
           horizontal
+          keyboardShouldPersistTaps="handled"
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.items}
           scrollEventThrottle={16}
-          onScroll={event => setOffset(event.nativeEvent.contentOffset.x)}
+          onScroll={event => {
+            currentOffset.current = event.nativeEvent.contentOffset.x;
+            setOffset(currentOffset.current);
+          }}
         >
-          {references.map(item => (
+          {(visible ? references : []).map(item => (
             <Pressable
               key={item.id}
               accessibilityRole="button"
               accessibilityLabel={
                 item.uploadState === 'failed'
-                  ? `${item.title}，上传失败，点击重试`
+                  ? t('realtime.reference.failedLabel', {
+                      title: item.id.startsWith('custom-')
+                        ? t('realtime.reference.custom')
+                        : item.title,
+                    })
                   : item.uploadState === 'uploading'
-                  ? `${item.title}，正在上传`
+                  ? t('realtime.reference.uploadingLabel', {
+                      title: item.id.startsWith('custom-')
+                        ? t('realtime.reference.custom')
+                        : item.title,
+                    })
+                  : item.id.startsWith('custom-')
+                  ? t('realtime.reference.custom')
                   : item.title
               }
               accessibilityState={{
@@ -134,10 +170,9 @@ export function RealtimeReferenceList({
               {selectedID === item.id && (
                 <View pointerEvents="none" style={styles.selection} />
               )}
-              <Image
-                source={{ uri: item.iconURL }}
+              <ReferenceThumbnail
+                uri={item.iconURL}
                 style={[styles.image, styles.thumbnail]}
-                resizeMode="cover"
               />
               <ReferenceUploadOverlay state={item.uploadState} />
             </Pressable>
@@ -151,28 +186,28 @@ export function RealtimeReferenceList({
 }
 
 const styles = StyleSheet.create({
-  row: { height: 50, flexDirection: 'row', alignItems: 'center' },
+  row: { height: thumbnailSize, flexDirection: 'row', alignItems: 'center' },
   hidden: { display: 'none' },
   add: {
-    width: 50,
-    height: 50,
+    width: thumbnailSize,
+    height: thumbnailSize,
     borderRadius: 10,
     overflow: 'hidden',
     backgroundColor: '#303032',
     marginLeft: 14,
     marginRight: 8,
   },
-  image: { width: 50, height: 50 },
+  image: { width: thumbnailSize, height: thumbnailSize },
   thumbnail: { borderRadius: 10, backgroundColor: '#303032' },
-  listContainer: { flex: 1, height: 54 },
+  listContainer: { flex: 1, height: thumbnailSize + 4 },
   items: {
     paddingLeft: 2,
     paddingRight: 14,
     paddingVertical: 2,
-    gap: 10,
+    gap: thumbnailGap,
     alignItems: 'center',
   },
-  item: { width: 50, height: 50 },
+  item: { width: thumbnailSize, height: thumbnailSize },
   selection: {
     position: 'absolute',
     top: -2,

@@ -2,7 +2,9 @@
  * The generation models currently supported by this SDK.
  */
 export enum RealtimeModel {
+  /** Xmax X2.0 realtime generation. */
   x2_0 = 'x2.0',
+  /** Xmax X2.0 Pro realtime generation. */
   x2_0_pro = 'x2.0-pro',
 }
 
@@ -52,13 +54,13 @@ export const realtimeModelSpecifications: Readonly<
       Object.freeze({ width: 1920, height: 1024 }),
     ]),
     minimumInputPixels: 600000,
-    maximumInputPixels: 1966080,
+    maximumInputPixels: 2100000,
     inputSizeAlignment: 32,
-    defaultFrameRate: 24,
+    defaultFrameRate: 30,
     defaultCameraVideoFormat: Object.freeze({
       width: 1024,
       height: 1920,
-      fps: 24,
+      fps: 30,
     }),
   }),
 });
@@ -215,8 +217,8 @@ export interface RealtimePerformanceAlarm {
  */
 export interface CameraStreamOptions {
   /**
-   * Defaults to the model's camera format at 24 fps: 832 x 1472 for x2.0,
-   * 1024 x 1920 for x2.0-pro. Width and height must be positive even
+   * Defaults to 832 x 1472 at 24 fps for x2.0,
+   * or 1024 x 1920 at 30 fps for x2.0-pro. Width and height must be positive even
    * integers. Empty model buckets resize dimensions using the model's bounds;
    * nonempty buckets require an exact width/height match without resizing.
    */
@@ -241,7 +243,7 @@ export interface ImageStreamOptions {
 
   /**
    * Requested dimensions are resolved to the model's input size before a
-   * centered crop. Omitted or null uses the oriented image size at 24 fps.
+   * centered crop. Omitted or null uses the oriented image size and model default fps.
    * Nonempty model buckets require those dimensions to match exactly; no
    * nearest bucket is selected automatically.
    */

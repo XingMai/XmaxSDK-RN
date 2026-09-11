@@ -1,3 +1,4 @@
+import { useLocalization } from '../localization/LocalizationProvider';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -15,6 +16,7 @@ import {
  * its animation does not keep running. The overlay never intercepts touches.
  */
 export function RealtimeLoadingOverlay({ loading }: { loading: boolean }) {
+  const { t } = useLocalization();
   const opacity = useRef(new Animated.Value(0)).current;
   const [visible, setVisible] = useState(loading);
   const [imageFailed, setImageFailed] = useState(false);
@@ -47,7 +49,7 @@ export function RealtimeLoadingOverlay({ loading }: { loading: boolean }) {
       pointerEvents="none"
       accessible={loading}
       accessibilityRole="progressbar"
-      accessibilityLabel="加载中"
+      accessibilityLabel={t('common.loading')}
       style={[styles.overlay, { opacity }]}
     >
       {imageFailed ? (

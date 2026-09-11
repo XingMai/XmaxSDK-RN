@@ -1,10 +1,12 @@
+import { errorMessageKey } from '../localization/ErrorMessages';
+import type { MessageKey } from '../localization/messages';
+import { useLocalization } from '../localization/LocalizationProvider';
 import { useEffect, useRef, useState } from 'react';
 import { launchImageLibrary } from 'react-native-image-picker';
 import Blob from 'react-native-blob-util';
 import {
   XmaxClient,
   XmaxError,
-  XmaxErrorCode,
   type XmaxEnvironment,
   type XmaxUploadedFile,
   type StorageProgress,
@@ -33,9 +35,10 @@ export interface SelectedFile {
  * the active operation and cleans up those files after it settles.
  */
 export function useStorage(apiKey: string, environment: XmaxEnvironment) {
+  const { t } = useLocalization();
   const [file, setFile] = useState<SelectedFile | null>(null);
   const [busy, setBusy] = useState<'picking' | 'uploading' | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<MessageKey | null>(null);
   const [progress, setProgress] = useState<StorageProgress | null>(null);
   const [safe, setSafe] = useState(false);
   const [result, setResult] = useState<{
@@ -90,7 +93,7 @@ export function useStorage(apiKey: string, environment: XmaxEnvironment) {
 
       if (!mounted.current || response.didCancel) return;
       if (response.errorCode)
-        throw new Error(response.errorMessage || '无法读取所选文件');
+        throw new Error(response.errorMessage || t('storage.file.error'));
 
       const asset = response.assets?.[0];
 
@@ -98,7 +101,7 @@ export function useStorage(apiKey: string, environment: XmaxEnvironment) {
         !asset?.uri ||
         (!asset.type?.startsWith('image/') && !asset.type?.startsWith('video/'))
       )
-        throw new Error('请选择图片或视频');
+        throw new Error(t('storage.select.required'));
 
       const kind = asset.type.startsWith('video/') ? 'video' : 'image';
       const suffix = asset.fileName?.split('.').pop()?.toLowerCase();
@@ -145,9 +148,8 @@ export function useStorage(apiKey: string, environment: XmaxEnvironment) {
       setProgress(null);
       setResult(null);
       if (old) await Blob.fs.unlink(old.path).catch(() => {});
-    } catch (e) {
-      if (mounted.current)
-        setError(e instanceof Error ? e.message : '文件选择失败，请重试');
+    } catch {
+      if (mounted.current) setError('storage.pick.error');
     } finally {
       if (copied) await Blob.fs.unlink(copied).catch(() => {});
 
@@ -164,7 +166,7 @@ export function useStorage(apiKey: string, environment: XmaxEnvironment) {
   function upload(checksSafety: boolean) {
     if (locked.current || !selected.current) return;
     if (!apiKey.trim()) {
-      setError('请返回首页填写 API Key 后再上传。');
+      setError('storage.api.required');
       return;
     }
 
@@ -211,11 +213,9 @@ export function useStorage(apiKey: string, environment: XmaxEnvironment) {
       } catch (e) {
         if (mounted.current && !abort.signal.aborted)
           setError(
-            e instanceof XmaxError && e.code === XmaxErrorCode.unsafeImage
-              ? '图片未通过安全检测，请重新选择。'
-              : e instanceof Error
-              ? e.message
-              : '上传失败，请重试',
+            e instanceof XmaxError
+              ? errorMessageKey(e.code)
+              : 'storage.upload.error',
           );
       } finally {
         locked.current = false;

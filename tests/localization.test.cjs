@@ -31,7 +31,7 @@ test('explicit UI language overrides the device locale and system preference fol
   }
 });
 
-test('home catalogs have matching complete keys and parameter sets', () => {
+test('XLab catalogs have matching complete keys and parameter sets', () => {
   assert.deepEqual(Object.keys(english).sort(), Object.keys(simplifiedChinese).sort());
   for (const key of Object.keys(english)) {
     assert(english[key].trim(), key);
@@ -49,4 +49,21 @@ test('existing configuration errors can switch language without changing failure
   const error = 'configuration.saveError';
   assert.equal(translate('zh-Hans', error), '配置保存失败，请重试。');
   assert.equal(translate('en', error), 'Unable to save configuration. Please retry.');
+});
+
+
+test('SDK errors and named progress parameters resolve in both interface languages', () => {
+  const { errorMessageKey } = loadSource(resolve(root, 'ErrorMessages.ts'));
+  for (const code of ['INVALID_API_KEY', 'CAMERA_PERMISSION_DENIED', 'MICROPHONE_PERMISSION_DENIED',
+    'NETWORK_ERROR', 'TIMEOUT', 'UNSAFE_IMAGE', 'UPLOAD_ERROR', 'RTC_ERROR']) {
+    const key = errorMessageKey(code);
+    assert.equal(typeof english[key], 'string');
+    assert.notEqual(translate('en', key), translate('zh-Hans', key));
+  }
+  assert.equal(errorMessageKey('NEW_VENDOR_ERROR'), 'error.internal');
+  assert.equal(errorMessageKey('toString'), 'error.internal');
+  assert.equal(translate('en', 'storage.upload.progress', { percent: 42 }), 'Uploading 42%');
+  assert.equal(translate('zh-Hans', 'storage.upload.progress', { percent: 42 }), '上传中 42%');
+  assert.equal(translate('en', 'realtime.reference.failedLabel', { title: 'My reference' }),
+    'My reference, upload failed. Tap to retry');
 });

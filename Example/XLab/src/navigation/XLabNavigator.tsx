@@ -1,3 +1,5 @@
+import { useLocalization } from '../localization/LocalizationProvider';
+import { configurationForLocale } from '../configuration/LocalizedConfiguration';
 import { createContext, useContext } from 'react';
 import { StyleSheet } from 'react-native';
 import { DarkTheme, NavigationContainer } from '@react-navigation/native';
@@ -5,7 +7,7 @@ import {
   createNativeStackNavigator,
   type NativeStackScreenProps,
 } from '@react-navigation/native-stack';
-import type { XmaxEnvironment } from '@xmax/react-native-sdk';
+import type { RealtimeModel, XmaxEnvironment } from '@xmax/react-native-sdk';
 import type {
   ConfigurationStore,
   SavedConfiguration,
@@ -18,9 +20,10 @@ import { StorageScreen } from '../screens/StorageScreen';
 /** Navigation state contains input selection, while credentials stay in context. */
 export type XLabStackParamList = {
   Feed: undefined;
-  Camera: { environment: XmaxEnvironment };
+  Camera: { environment: XmaxEnvironment; model: RealtimeModel };
   Image: {
     environment: XmaxEnvironment;
+    model: RealtimeModel;
     fileURL: string;
     customTrajectory: boolean;
     contentType: string | undefined;
@@ -50,19 +53,25 @@ function useXLabConfiguration() {
 function FeedRoute({
   navigation,
 }: NativeStackScreenProps<XLabStackParamList, 'Feed'>) {
-  const { configuration, store } = useXLabConfiguration();
+  const { configuration: saved, store } = useXLabConfiguration();
+  const { locale } = useLocalization();
+  const configuration = configurationForLocale(saved, locale);
 
   return (
     <FeedScreen
       configuration={configuration}
       onAPIKeyChange={value => store.setKey(configuration.environment, value)}
       onLanguageChange={value => store.selectLanguage(value)}
+      onModelChange={value => store.selectModel(value)}
       onRetrySave={() => {
         void store.flush();
       }}
       onCamera={(_apiKey, environment) => {
         if (navigation.isFocused())
-          navigation.navigate('Camera', { environment });
+          navigation.navigate('Camera', {
+            environment,
+            model: configuration.model,
+          });
       }}
       onImage={(
         _apiKey,
@@ -74,6 +83,7 @@ function FeedRoute({
         if (navigation.isFocused())
           navigation.navigate('Image', {
             environment,
+            model: configuration.model,
             fileURL,
             customTrajectory,
             contentType,
@@ -95,6 +105,7 @@ function CameraRoute({
 
   return (
     <CameraScreen
+      model={route.params.model}
       apiKey={configuration.keys[route.params.environment].trim()}
       environment={route.params.environment}
       onBack={navigation.goBack}
@@ -110,6 +121,7 @@ function ImageRoute({
 
   return (
     <RealtimeScreen
+      model={route.params.model}
       apiKey={configuration.keys[route.params.environment].trim()}
       environment={route.params.environment}
       fileURL={route.params.fileURL}

@@ -1,8 +1,12 @@
-import { XmaxEnvironment } from '@xmax/react-native-sdk';
+import { RealtimeModel, XmaxEnvironment } from '@xmax/react-native-sdk';
 import type { XLabLanguage } from '../localization/Localization';
 
 /** Separate secure-storage slots; no shared API Key fallback between environments. */
-export type ConfigurationField = XmaxEnvironment | 'environment' | 'language';
+export type ConfigurationField =
+  | XmaxEnvironment
+  | 'environment'
+  | 'language'
+  | 'model';
 
 /** Minimal persistence boundary, implemented by the host's secure storage. */
 export interface ConfigurationStorage {
@@ -16,6 +20,7 @@ export interface SavedConfiguration {
   readonly keys: Readonly<Record<XmaxEnvironment, string>>;
   readonly environment: XmaxEnvironment;
   readonly language: XLabLanguage;
+  readonly model: RealtimeModel;
   readonly loaded: boolean;
   readonly saving: boolean;
   /** Localized at render time so an existing failure follows language changes. */
@@ -31,6 +36,7 @@ export class ConfigurationStore {
     keys: { china: '', global: '' },
     environment: XmaxEnvironment.china,
     language: 'system',
+    model: RealtimeModel.x2_0,
     loaded: false,
     saving: false,
     error: null,
@@ -65,15 +71,22 @@ export class ConfigurationStore {
     this.publish({ error: null });
     this.loading = (async () => {
       try {
-        const [china, global, environment, language] = await Promise.all([
-          this.storage.read(XmaxEnvironment.china),
-          this.storage.read(XmaxEnvironment.global),
-          this.storage.read('environment'),
-          this.storage.read('language'),
-        ]);
+        const [china, global, environment, language, model] = await Promise.all(
+          [
+            this.storage.read(XmaxEnvironment.china),
+            this.storage.read(XmaxEnvironment.global),
+            this.storage.read('environment'),
+            this.storage.read('language'),
+            this.storage.read('model'),
+          ],
+        );
 
         this.publish({
           keys: { china: china ?? '', global: global ?? '' },
+          model:
+            model === RealtimeModel.x2_0_pro
+              ? RealtimeModel.x2_0_pro
+              : RealtimeModel.x2_0,
           language:
             language === 'zh-Hans' || language === 'en' ? language : 'system',
           environment:
@@ -112,6 +125,14 @@ export class ConfigurationStore {
 
     this.publish({ language });
     this.enqueue('language', language);
+  }
+
+  /** Persists the model for future entries without modifying an active route. */
+  selectModel(model: RealtimeModel): void {
+    if (!this.state.loaded || model === this.state.model) return;
+
+    this.publish({ model });
+    this.enqueue('model', model);
   }
 
   private enqueue(field: ConfigurationField, value: string): void {

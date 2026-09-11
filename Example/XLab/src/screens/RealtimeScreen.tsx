@@ -1,3 +1,6 @@
+import { errorMessageKey } from '../localization/ErrorMessages';
+import { useLocalization } from '../localization/LocalizationProvider';
+import { RealtimeGenerationOperations } from '../realtime/RealtimeGenerationOperations';
 import { XLabTrajectoryRenderer } from '../realtime/XLabTrajectoryRenderer';
 import { uploadTouchAnimationReference } from '../realtime/TouchAnimationReference';
 import { realtimeCategories } from '../realtime/RealtimeReferenceCatalog';
@@ -43,11 +46,11 @@ import {
  * Closes the realtime manager on unmount or backgrounding. Foreground recovery
  * restores local preview without automatically restarting generation.
  * Native back gestures remain uninterrupted; cancelling a swipe keeps preview alive.
- * The preview and controls respect the top safe area, with another 68 points
- * reserved above file input. The control panel extends to the bottom edge and
- * pads its content above the bottom safe area.
+ * Camera preview extends behind the top system area. Image preview starts below
+ * the top controls and uses fit scaling. Controls retain safe-area padding.
  */
 export function RealtimeScreen({
+  model = RealtimeModel.x2_0,
   apiKey,
   environment,
   onBack,
@@ -55,6 +58,8 @@ export function RealtimeScreen({
   customTrajectory = false,
   imageContentType,
 }: {
+  /** Model captured when entering the page; defaults to X2.0. */
+  model?: RealtimeModel;
   apiKey: string;
   environment: XmaxEnvironment;
   onBack: () => void;
@@ -64,13 +69,16 @@ export function RealtimeScreen({
   customTrajectory?: boolean;
   imageContentType?: string | undefined;
 }) {
+  const { t } = useLocalization();
   const insets = useSafeAreaInsets();
   const trajectoryRenderer = useMemo(
     () => (customTrajectory ? new XLabTrajectoryRenderer() : null),
     [customTrajectory],
   );
   const client = useRef<XmaxClient | null>(null);
-  const touchUpload = useRef<AbortController | null>(null);
+  const operations = useRef<RealtimeGenerationOperations | null>(null);
+  const teardown = useRef<Promise<void>>(Promise.resolve());
+  const mediaBusy = useRef(true);
   const touchReference = useRef<string | null>(null);
   const manager = useRef<XmaxRealtimeManaging | null>(null),
     local = useRef<RealtimeMediaStream | null>(null);
@@ -86,13 +94,11 @@ export function RealtimeScreen({
   });
   const [busy, setBusy] = useState(true),
     [loading, setLoading] = useState(true),
+    [generationRequested, setGenerationRequested] = useState(false),
     [error, setError] = useState<RealtimeErrorNotice | null>(null),
     [prompt, setPrompt] = useState('');
 
   const nextOperation = useCallback(() => {
-    touchUpload.current?.abort();
-    touchUpload.current = null;
-
     return ++epoch.current;
   }, []);
 
@@ -104,6 +110,7 @@ export function RealtimeScreen({
     if (alive.current && failure.code !== XmaxErrorCode.cancelled) {
       setError({
         message: failure.message,
+        messageKey: errorMessageKey(failure.code),
         permissionError: [
           XmaxErrorCode.cameraPermissionDenied,
           XmaxErrorCode.microphonePermissionDenied,
@@ -118,6 +125,8 @@ export function RealtimeScreen({
   const preview = useCallback(
     async (realtime: XmaxRealtimeManaging) => {
       const token = nextOperation();
+      mediaBusy.current = true;
+      setGenerationRequested(false);
 
       setBusy(true);
       setLoading(true);
@@ -136,6 +145,7 @@ export function RealtimeScreen({
         if (token === epoch.current) showError(failure);
       } finally {
         if (alive.current && token === epoch.current) {
+          mediaBusy.current = false;
           setBusy(false);
           setLoading(false);
         }
@@ -146,17 +156,32 @@ export function RealtimeScreen({
 
   useEffect(() => {
     alive.current = true;
+    mediaBusy.current = true;
+    setLocalTrack(null);
+    setRemoteTrack(null);
+    setGenerationRequested(false);
+    setBusy(true);
+    setLoading(true);
+    setState({
+      connectionState: RealtimeConnectionState.idle,
+      sessionID: null,
+      taskID: null,
+    });
 
     const configuredClient = new XmaxClient({ apiKey, environment });
     client.current = configuredClient;
     touchReference.current = null;
     const realtime = configuredClient.createRealtimeManager({
-      model: RealtimeModel.x2_0,
+      model,
     });
 
+    const generation = new RealtimeGenerationOperations(() =>
+      realtime.disconnect(),
+    );
+    operations.current = generation;
     manager.current = realtime;
     void realtime.setStateListener(value => {
-      if (!alive.current) return;
+      if (!alive.current || manager.current !== realtime) return;
 
       setState(value);
       if (
@@ -167,22 +192,51 @@ export function RealtimeScreen({
       )
         setRemoteTrack(null);
     });
-    void realtime.setErrorListener(showError);
-    void preview(realtime);
+    void realtime.setErrorListener(failure => {
+      if (manager.current === realtime && AppState.currentState === 'active')
+        showError(failure);
+    });
+    void teardown.current.then(() => {
+      if (
+        alive.current &&
+        manager.current === realtime &&
+        AppState.currentState === 'active'
+      )
+        return preview(realtime);
+    });
 
     let previous = AppState.currentState;
     let closing: Promise<void> = Promise.resolve();
     const appState = AppState.addEventListener('change', next => {
       if (next === 'background') {
         nextOperation();
+        mediaBusy.current = true;
+        setBusy(true);
+        setGenerationRequested(false);
         setLoading(false);
         local.current = null;
         setLocalTrack(null);
         setRemoteTrack(null);
-        closing = realtime.close().catch(showError);
+        closing = generation
+          .cancel(() => realtime.close())
+          .catch(failure => {
+            if (
+              manager.current === realtime &&
+              AppState.currentState === 'active'
+            )
+              showError(failure);
+          });
+        teardown.current = closing;
       } else if (next === 'active' && previous === 'background') {
+        const token = nextOperation();
         void closing.then(() => {
-          if (alive.current) return preview(realtime);
+          if (
+            alive.current &&
+            manager.current === realtime &&
+            token === epoch.current &&
+            AppState.currentState === 'active'
+          )
+            return preview(realtime);
         });
       }
       if (next !== 'inactive') previous = next;
@@ -193,27 +247,53 @@ export function RealtimeScreen({
     return () => {
       alive.current = false;
       nextOperation();
+      mediaBusy.current = true;
+      operations.current = null;
       client.current = null;
       manager.current = null;
       local.current = null;
       appState.remove();
       void realtime.setStateListener(null);
       void realtime.setErrorListener(null);
-      void realtime.close().catch(() => {});
+      teardown.current = generation
+        .cancel(() => realtime.close())
+        .catch(() => {});
     };
-  }, [apiKey, environment, preview, showError, nextOperation]);
+  }, [apiKey, environment, model, preview, showError, nextOperation]);
 
   /**
    * Mounts the remote track before starting or updating prompt/reference generation.
    */
-  const submit = async (context: RealtimeContext, touchAnimation = false) => {
-    if (!manager.current || !local.current || busy) return;
+  const submit = async (
+    context: RealtimeContext,
+    touchAnimation = false,
+    onFailure?: () => void,
+  ) => {
+    if (
+      !alive.current ||
+      !manager.current ||
+      !local.current ||
+      !operations.current ||
+      mediaBusy.current ||
+      AppState.currentState !== 'active'
+    )
+      return;
     if (!apiKey) {
-      setError({ message: '请返回首页输入 API Key', permissionError: false });
+      setError({
+        message: t('realtime.api.required'),
+        messageKey: 'realtime.api.required',
+        permissionError: false,
+      });
+      onFailure?.();
       return;
     }
     if (!context.prompt.trim()) {
-      setError({ message: '请输入提示词', permissionError: false });
+      setError({
+        message: t('realtime.prompt.required'),
+        messageKey: 'realtime.prompt.required',
+        permissionError: false,
+      });
+      onFailure?.();
       return;
     }
 
@@ -221,38 +301,48 @@ export function RealtimeScreen({
 
     const token = nextOperation();
     const realtime = manager.current;
+    const generation = operations.current;
+    const stream = local.current;
+    const configuredClient = client.current!;
 
+    setGenerationRequested(true);
     setBusy(true);
     setLoading(true);
     setError(null);
 
     try {
-      if (touchAnimation && fileURL && !touchReference.current) {
-        const upload = new AbortController();
-        touchUpload.current = upload;
-        const reference = await uploadTouchAnimationReference(
-          client.current!.createStorageManager(),
-          fileURL,
-          imageContentType,
-          upload.signal,
-        );
-        if (!alive.current || token !== epoch.current) return;
-        touchReference.current = reference;
-        touchUpload.current = null;
-      }
-      if (touchAnimation)
-        context = {
-          ...context,
-          referencePath: fileURL ? touchReference.current : null,
-        };
-      const remote = await realtime.connect({ localStream: local.current });
+      await generation.run(async signal => {
+        if (touchAnimation && fileURL && !touchReference.current) {
+          const reference = await uploadTouchAnimationReference(
+            configuredClient.createStorageManager(),
+            fileURL,
+            imageContentType,
+            signal,
+          );
+          if (signal.aborted || !alive.current || token !== epoch.current)
+            return;
+          touchReference.current = reference;
+        }
+        if (touchAnimation)
+          context = {
+            ...context,
+            referencePath: fileURL ? touchReference.current : null,
+          };
+        if (signal.aborted || token !== epoch.current) return;
+        const remote = await realtime.connect({ localStream: stream });
 
-      if (!alive.current || token !== epoch.current) return;
+        if (signal.aborted || !alive.current || token !== epoch.current) return;
 
-      setRemoteTrack(remote.videoTrack);
-      await realtime.startGeneration({ context });
+        setRemoteTrack(remote.videoTrack);
+        await realtime.startGeneration({ context });
+      });
     } catch (failure) {
-      if (token === epoch.current) showError(failure);
+      if (alive.current && token === epoch.current) {
+        setGenerationRequested(false);
+        setRemoteTrack(null);
+        showError(failure);
+        onFailure?.();
+      }
     } finally {
       if (alive.current && token === epoch.current) {
         setBusy(false);
@@ -265,17 +355,19 @@ export function RealtimeScreen({
    * Disconnects generation while preserving the local media preview.
    */
   const stop = async () => {
+    if (!alive.current || !operations.current || mediaBusy.current) return;
     const token = nextOperation();
 
+    setGenerationRequested(false);
     setBusy(true);
     setLoading(false);
 
     try {
       // Keep the container mounted until SDK native hiding acknowledges teardown.
       // Removing it here unregisters the hide callback before disconnect can use it.
-      await manager.current?.disconnect();
+      await operations.current.cancel();
     } catch (failure) {
-      showError(failure);
+      if (token === epoch.current) showError(failure);
     } finally {
       if (alive.current && token === epoch.current) {
         setRemoteTrack(null);
@@ -288,9 +380,10 @@ export function RealtimeScreen({
    * Switches the camera and applies the result only to the active operation.
    */
   const flip = async () => {
-    if (busy || !manager.current) return;
+    if (busy || mediaBusy.current || !manager.current) return;
 
     const token = nextOperation();
+    mediaBusy.current = true;
 
     setBusy(true);
 
@@ -304,7 +397,10 @@ export function RealtimeScreen({
     } catch (failure) {
       if (token === epoch.current) showError(failure);
     } finally {
-      if (alive.current && token === epoch.current) setBusy(false);
+      if (alive.current && token === epoch.current) {
+        mediaBusy.current = false;
+        setBusy(false);
+      }
     }
   };
 
@@ -313,7 +409,7 @@ export function RealtimeScreen({
     RealtimeConnectionState.connected,
     RealtimeConnectionState.generating,
   ].includes(state.connectionState);
-  const previewTop = insets.top + (fileURL ? 68 : 0);
+  const previewTop = fileURL ? insets.top + 68 : 0;
 
   return (
     <View style={styles.page}>
@@ -331,11 +427,11 @@ export function RealtimeScreen({
       </View>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="返回首页"
+        accessibilityLabel={t('common.home')}
         onPress={onBack}
         style={({ pressed }) => [
           styles.backButton,
-          { top: insets.top + 8 },
+          { top: insets.top + 8, left: insets.left + 12 },
           pressed && styles.pressed,
         ]}
       >
@@ -347,12 +443,12 @@ export function RealtimeScreen({
       {!fileURL && (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="翻转摄像头"
+          accessibilityLabel={t('realtime.flipCamera')}
           onPress={flip}
           disabled={busy}
           style={({ pressed }) => [
             styles.flip,
-            { top: insets.top + 6 },
+            { top: insets.top + 6, right: insets.right + 8 },
             pressed && styles.pressed,
           ]}
         >
@@ -360,21 +456,25 @@ export function RealtimeScreen({
             source={require('../assets/realtime/realtime_camera_rotate.png')}
             style={styles.flipIcon}
           />
-          <Text style={styles.flipLabel}>翻转</Text>
+          <Text style={styles.flipLabel}>{t('realtime.flip')}</Text>
         </Pressable>
       )}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.bottom}
+        style={[
+          styles.bottom,
+          { paddingLeft: insets.left, paddingRight: insets.right },
+        ]}
       >
         <RealtimeControlPanel
+          initialCategoryID={fileURL ? 'mox' : 'charx'}
           bottomInset={insets.bottom}
           apiKey={apiKey}
           environment={environment}
           prompt={prompt}
           onPromptChange={setPrompt}
-          onSubmit={context => {
-            void submit(context);
+          onSubmit={(context, onFailure) => {
+            void submit(context, false, onFailure);
           }}
           onStop={() => {
             void stop();
@@ -382,6 +482,7 @@ export function RealtimeScreen({
           generating={
             state.connectionState === RealtimeConnectionState.generating
           }
+          generationRequested={generationRequested}
           onInstruction={() => {
             void submit(
               {
@@ -393,14 +494,18 @@ export function RealtimeScreen({
             );
           }}
           connected={connected}
-          canSubmit={!busy && !!localTrack}
+          canSubmit={!mediaBusy.current && !!localTrack}
         />
       </KeyboardAvoidingView>
       <RealtimeErrorToast
         notice={error}
         top={insets.top + 78}
         actionLabel={
-          error?.permissionError ? '打开设置' : !localTrack ? '重试' : null
+          error?.permissionError
+            ? t('common.settings')
+            : !localTrack
+            ? t('common.retry')
+            : null
         }
         onDismiss={clearError}
         onAction={() => {
@@ -420,7 +525,6 @@ const styles = StyleSheet.create({
   preview: { flex: 1, minHeight: 0, overflow: 'hidden' },
   backButton: {
     position: 'absolute',
-    left: 12,
     width: 44,
     height: 44,
     alignItems: 'center',
@@ -429,7 +533,6 @@ const styles = StyleSheet.create({
   backIcon: { width: 32, height: 32, resizeMode: 'contain' },
   flip: {
     position: 'absolute',
-    right: 8,
     width: 58,
     height: 62,
     paddingTop: 9,

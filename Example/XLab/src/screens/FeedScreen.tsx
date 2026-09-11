@@ -13,7 +13,11 @@ import {
 } from 'react-native';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { XmaxEnvironment, XmaxSDKInfo } from '@xmax/react-native-sdk';
+import {
+  RealtimeModel,
+  XmaxEnvironment,
+  XmaxSDKInfo,
+} from '@xmax/react-native-sdk';
 import { colors, feedFont as font } from '../theme/tokens';
 import { FeedLanguageButton } from '../components/FeedLanguageButton';
 import { useLocalization } from '../localization/LocalizationProvider';
@@ -46,6 +50,7 @@ export function FeedScreen({
   configuration,
   onAPIKeyChange,
   onLanguageChange,
+  onModelChange,
   onRetrySave,
 }: {
   onCamera: (apiKey: string, environment: XmaxEnvironment) => void;
@@ -60,6 +65,7 @@ export function FeedScreen({
   configuration: SavedConfiguration;
   onAPIKeyChange: (value: string) => void;
   onLanguageChange: (language: XLabLanguage) => void;
+  onModelChange: (model: RealtimeModel) => void;
   onRetrySave: () => void;
 }) {
   const { t } = useLocalization();
@@ -78,7 +84,7 @@ export function FeedScreen({
     };
   }, []);
 
-  /** Opens the selected API environment's portal, independently of UI language. */
+  /** Opens the portal for the locale-selected API environment. */
   async function openAPIKeyPage() {
     const url =
       environment === XmaxEnvironment.china
@@ -94,15 +100,20 @@ export function FeedScreen({
     }
   }
 
+  /** Guards every feature entry using the current environment's key. */
+  function requireAPIKey(): boolean {
+    if (apiKey.trim()) return true;
+
+    Alert.alert(t('common.notice'), t('feed.api.required'), [
+      { text: t('common.ok') },
+    ]);
+
+    return false;
+  }
+
   /** Selects an input image; the destination owns preparation and RTC resources. */
   async function openImage(customTrajectory = false) {
-    if (pickerOpen.current) return;
-    if (!apiKey.trim()) {
-      Alert.alert(t('common.notice'), t('feed.api.required'), [
-        { text: t('common.ok') },
-      ]);
-      return;
-    }
+    if (pickerOpen.current || !requireAPIKey()) return;
 
     pickerOpen.current = true;
     try {
@@ -192,7 +203,7 @@ export function FeedScreen({
                 Platform.OS === 'ios' ? 'RN / iOS' : 'RN / Android',
               ],
               [t('feed.os'), Platform.OS === 'ios' ? '15.1+' : '8.0+'],
-              [t('feed.latestModel'), 'X2.0'],
+              [t('feed.latestModel'), 'X2.0 PRO'],
             ].map(([label, value]) => (
               <View key={label} style={styles.metric}>
                 <FeedText
@@ -221,7 +232,9 @@ export function FeedScreen({
                 {t('feed.model.title')}
               </FeedText>
               <FeedText style={styles.modelCount}>
-                {t('feed.model.count', { count: 1 })}
+                {t('feed.model.count', {
+                  count: Object.values(RealtimeModel).length,
+                })}
               </FeedText>
             </View>
             <View style={styles.apiContainer}>
@@ -296,16 +309,36 @@ export function FeedScreen({
               )}
             </View>
             <View style={styles.divider} />
-            <View style={styles.model}>
-              <FeedText style={styles.modelDiamond}>◆</FeedText>
-              <View style={styles.modelText}>
-                <FeedText style={styles.modelTitle}>X2.0</FeedText>
-                <FeedText style={styles.modelIdentifier}>
-                  RealtimeModel.x2_0
-                </FeedText>
-              </View>
-              <Pill text={t('feed.selected')} />
-            </View>
+            {Object.values(RealtimeModel).map(model => (
+              <Pressable
+                key={model}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: configuration.model === model }}
+                accessibilityLabel={
+                  model === RealtimeModel.x2_0_pro ? 'X2.0 Pro' : 'X2.0'
+                }
+                onPress={() => onModelChange(model)}
+                style={[
+                  styles.model,
+                  configuration.model === model && styles.selectedModel,
+                ]}
+              >
+                <FeedText style={styles.modelDiamond}>◆</FeedText>
+                <View style={styles.modelText}>
+                  <FeedText style={styles.modelTitle}>
+                    {model === RealtimeModel.x2_0_pro ? 'X2.0 Pro' : 'X2.0'}
+                  </FeedText>
+                  <FeedText style={styles.modelIdentifier}>
+                    {model === RealtimeModel.x2_0_pro
+                      ? 'RealtimeModel.x2_0_pro'
+                      : 'RealtimeModel.x2_0'}
+                  </FeedText>
+                </View>
+                {configuration.model === model && (
+                  <Pill text={t('feed.selected')} />
+                )}
+              </Pressable>
+            ))}
           </View>
 
           <View style={styles.section}>
@@ -324,7 +357,9 @@ export function FeedScreen({
               title={t('feed.camera.title')}
               subtitle={t('feed.camera.subtitle')}
               capability="createLocalCameraStream()"
-              onPress={() => onCamera(apiKey.trim(), environment)}
+              onPress={() => {
+                if (requireAPIKey()) onCamera(apiKey.trim(), environment);
+              }}
             />
             <FeedPipelineCard
               sequence="02"
@@ -362,7 +397,9 @@ export function FeedScreen({
               }}
             />
             <StorageFeatureCard
-              onPress={() => onStorage(apiKey.trim(), environment)}
+              onPress={() => {
+                if (requireAPIKey()) onStorage(apiKey.trim(), environment);
+              }}
             />
           </View>
           <View style={styles.footer}>
@@ -609,6 +646,10 @@ const styles = StyleSheet.create({
     paddingLeft: 10,
     paddingRight: 8,
     borderRadius: 10,
+    marginTop: 4,
+    backgroundColor: 'rgba(255,255,255,0.025)',
+  },
+  selectedModel: {
     borderWidth: 1,
     borderColor: 'rgba(142,240,200,0.16)',
     backgroundColor: 'rgba(142,240,200,0.063)',

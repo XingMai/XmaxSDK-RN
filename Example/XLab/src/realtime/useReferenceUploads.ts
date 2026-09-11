@@ -1,3 +1,4 @@
+import { useLocalization } from '../localization/LocalizationProvider';
 import { useEffect, useRef } from 'react';
 import { Alert } from 'react-native';
 import type { Asset } from 'react-native-image-picker';
@@ -17,9 +18,10 @@ import {
 async function prepareReferenceFile(
   id: string,
   asset: Asset,
+  t: ReturnType<typeof useLocalization>['t'],
 ): Promise<ReferenceUploadFile> {
   if (!asset.uri || !asset.type?.startsWith('image/'))
-    throw new Error('请选择可读取的图片');
+    throw new Error(t('realtime.reference.readable'));
 
   const suffix = asset.fileName?.split('.').pop()?.toLowerCase();
   const extension = suffix && /^[a-z0-9]+$/.test(suffix) ? suffix : 'image';
@@ -32,7 +34,7 @@ async function prepareReferenceFile(
     await Blob.fs.cp(source, path);
     const stat = await Blob.fs.stat(path);
     if (stat.type !== 'file' || Number(stat.size) <= 0)
-      throw new Error('无法读取参考图文件');
+      throw new Error(t('realtime.reference.fileError'));
 
     return {
       fileURL: `file://${path}`,
@@ -54,6 +56,7 @@ export function useReferenceUploads(
   environment: XmaxEnvironment,
   onUpdate: (id: string, update: ReferenceUploadUpdate) => void,
 ) {
+  const { t } = useLocalization();
   const tasks = useRef(new Map<string, ReferenceUploadTask>());
   const mounted = useRef(true);
   const update = useRef(onUpdate);
@@ -77,10 +80,9 @@ export function useReferenceUploads(
     if (!mounted.current) return;
 
     const task = new ReferenceUploadTask(
-      () => prepareReferenceFile(reference.id, asset),
+      () => prepareReferenceFile(reference.id, asset, t),
       (file, signal) => {
-        if (!apiKey.trim())
-          throw new Error('请返回首页填写 API Key 后再上传。');
+        if (!apiKey.trim()) throw new Error(t('storage.api.required'));
 
         const storage = new XmaxClient({
           apiKey,
@@ -99,10 +101,10 @@ export function useReferenceUploads(
       () => {
         if (mounted.current)
           Alert.alert(
-            '参考图上传失败',
+            t('realtime.reference.uploadError'),
             apiKey.trim()
-              ? '点击图片可重试。'
-              : '请返回首页填写 API Key 后再上传。',
+              ? t('realtime.reference.retry')
+              : t('storage.api.required'),
           );
       },
     );

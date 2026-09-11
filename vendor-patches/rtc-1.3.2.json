@@ -39,6 +39,16 @@
     },
     {
       "path": "lib/commonjs/index.js",
+      "before": "                canvas.ios_view = view;",
+      "after": "                // A fresh native canvas already has a nil view. Bridging JS null here sets NSNull.\n                if (view) canvas.ios_view = view;"
+    },
+    {
+      "path": "lib/module/index.js",
+      "before": "                canvas.ios_view = view;",
+      "after": "                // A fresh native canvas already has a nil view. Bridging JS null here sets NSNull.\n                if (view) canvas.ios_view = view;"
+    },
+    {
+      "path": "lib/commonjs/index.js",
       "before": "this.logger.error(\"[message-client] Event emit failed: \".concat(eventName), err);",
       "after": "this.logger.error(\"[message-client] Event emit failed: \".concat(eventName), {\n                                name: err && err.name ? String(err.name) : typeof err,\n                                message: err && err.message ? String(err.message) : String(err),\n                                stack: err && err.stack ? String(err.stack) : '',\n                                argumentKeys: decodeArgs.map(function (arg) {\n                                    return arg !== null && typeof arg === 'object' ? Object.keys(arg).slice(0, 16) : typeof arg;\n                                }),\n                            });"
     },
