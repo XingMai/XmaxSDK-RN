@@ -1,6 +1,6 @@
 # RTC 1.3.2 开发补丁
 
-来源：`@volcengine/react-native-rtc@1.3.2` npm 发布包，SHA-256 `ce797363e1fad88b6d7daae6dc9c22a9d50dc854374bbe978415a68d2e84fa76`。来源审核见 `docs/vendor-rn-audit.md`。
+来源：`@volcengine/react-native-rtc@1.3.2` npm 发布包，SHA-256 `ce797363e1fad88b6d7daae6dc9c22a9d50dc854374bbe978415a68d2e84fa76`。
 
 发布包的 package.json 写 MIT，但随包 LICENSE 实际为 New BSD License；保留该原文于 `VolcEngineRTC-LICENSE.txt`，发布前需解决这项元数据不一致并核对原生 SDK 自身条款，不把 npm 元数据误作二进制授权。
 

@@ -1,8 +1,6 @@
-# React Native 公开 API 标准
+# React Native API 说明
 
-2026-09-10。已确定的首版设计标准。当前已实现摄像头/图片实时 API、组件、尺寸计算和存储；轨迹交互仍是后续设计。完整目标声明见 [public-api.d.ts](public-api.d.ts)，当前可调用范围见 [camera-implementation.md](camera-implementation.md)、[image-implementation.md](image-implementation.md)、[storage-implementation.md](storage-implementation.md) 和 src/index.ts 导出，本文解释目标语义。关键名称、参数业务名、状态原始值及职责对齐当前 iOS 源码。
-
-最初设计参考 iOS 工作区 `/Users/xmax.ai/dev/Xmax/iOS/XmaxSDK`，HEAD 为 `961fbb37472f9a59f85502ebcacb74d6f5e66caa`，包含未提交修改，不能把本次参考描述为该 commit 的纯净发布版本；文件指纹见 [ios-reference.json](ios-reference.json)。摄像头实施采用更新后的工作区快照，见 [camera-ios-reference.json](camera-ios-reference.json)。
+当前提供摄像头、图片实时生成、视频组件、模型尺寸计算和存储 API。公开入口见 [src/index.ts](../src/index.ts)，TypeScript 类型声明由源码构建生成。API 名称、参数和生命周期与 iOS SDK 对齐。
 
 日志选项与 iOS 一样全局生效，由最后创建的 Client 决定，默认关闭。格式、输出渠道、指标范围与隐私差异见 [日志说明](logging.md)。
 
@@ -93,7 +91,7 @@ XmaxStorageProgressHandler 接收 RN 的 StorageProgress，字段按 Foundation.
 
 存储使用临时凭据；不让宿主配置长期 SecretKey。实时 close 不取消共享存储任务，尤其不能取消 XLab 的参考图上传。首版不新增传输暂停/取消/dispose 方法；上传和下载 options 增加可选 signal: AbortSignal，适配 Swift 调用方 Task 的取消。页面返回时中断自己的任务，不能取消其他页面。MediaServicing.resolveModelInputSize 是同步纯计算，不返回 Promise。
 
-图片与视频上传统一使用 COS 简单 PUT，不自动分片或断点续传；文件超过服务端简单上传限制时失败，不切换上传方式。失败尽量保留可用的 HTTP 状态和 COS 错误码，具体适配见 storage-implementation.md。
+图片与视频上传统一使用 COS 简单 PUT，不自动分片或断点续传；文件超过服务端简单上传限制时失败，不切换上传方式。失败尽量保留可用的 HTTP 状态和 COS 错误码。
 
 ## 7. 生命周期
 

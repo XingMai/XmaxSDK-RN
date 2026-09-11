@@ -13,7 +13,7 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer npm run pods
 npm start
 ```
 
-Node 推荐 `.nvmrc` 的 22.13.0；本机验证使用 26.3.1。Android 使用 JDK 17，并配置 `ANDROID_HOME`；详细版本见 [工程标准](engineering-baseline.md)。`npm ci` 的 prepare 会自动应用已登记的开发期 RTC、COS 和文件传输补丁。
+Node 版本见根目录 `.nvmrc` 和 [package.json](../package.json)。Android 使用 JDK 17，并配置 `ANDROID_HOME`。`npm ci` 的 prepare 会自动应用已登记的开发期 RTC、COS 和文件传输补丁。
 
 新增原生模块后必须重新编译安装，Metro 热更新不能为旧二进制增加 RTC、COS、文件选择或视频预览模块。保持 Metro 终端运行，在另一终端启动 App：
 
@@ -25,9 +25,9 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer npm run ios -- --device
 npm run android -- --no-packager
 ```
 
-iOS 工作区为 `Example/XLab/ios/XLab.xcworkspace`。当前火山 iOS 二进制提供 arm64 真机和 x86_64 模拟器切片，**没有 arm64 模拟器切片**；不要用此前 Hello World 的 Apple Silicon 模拟器运行结果推断 RTC 可用。优先使用 iPhone 真机。
+iOS 工作区为 `Example/XLab/ios/XLab.xcworkspace`。当前火山 iOS 二进制提供 arm64 真机和 x86_64 模拟器切片，**没有 arm64 模拟器切片**。优先使用 iPhone 真机。
 
-Android 原生工程为 `Example/XLab/android`。厂商 Maven 仓库已经配置；旧 Support Library 传递依赖需要工程中的 `android.enableJetifier=true`，来源与验证见实现记录。首次构建会下载 Gradle、SDK、NDK 和 Maven 依赖。
+Android 原生工程为 `Example/XLab/android`。厂商 Maven 仓库已经配置；旧 Support Library 传递依赖需要工程中的 `android.enableJetifier=true`。首次构建会下载 Gradle、SDK、NDK 和 Maven 依赖。
 
 运行后在首页选择中国/全球环境，输入 API Key，进入摄像头。空 Key 可看预览，生成需要有效 Key。输入提示词后发送；再次发送更新条件，停止按钮断开生成并保留相机预览，返回释放摄像头。XLab 将两种环境的 Key 分别保存到 iOS Keychain / Android Keystore 支持的本机安全存储，启动时恢复；清空输入会删除对应 Key。SDK 本身不持久化 Key。
 
@@ -47,6 +47,6 @@ npm pack --dry-run
 
 `npm test` 构建 CommonJS / ESM / 声明文件，检查已输出的公开声明正负调用，再运行真实 TS 控制层的协议、尺寸与生命周期测试，只有原生边界和 HTTP 被替换。
 
-SDK 保留 strict、noUncheckedIndexedAccess、exactOptionalPropertyTypes、skipLibCheck=false。RN 0.87 类型使用官方 `react-native-legacy-deep-imports` 条件选择兼容声明；运行时仍为新架构。XLab 沿用模板 skipLibCheck=true。具体原因和验证边界见实现记录。
+SDK 保留 strict、noUncheckedIndexedAccess、exactOptionalPropertyTypes、skipLibCheck=false。RN 0.87 类型使用官方 `react-native-legacy-deep-imports` 条件选择兼容声明；运行时仍为新架构。XLab 沿用模板 skipLibCheck=true。
 
 包暂设 private。当前厂商补丁用于仓库开发，尚未提供供外部应用独立安装的受维护厂商修订包，因此 npm pack 成功不代表已可发布。

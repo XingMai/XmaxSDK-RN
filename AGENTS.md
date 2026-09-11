@@ -1,6 +1,6 @@
 # XmaxSDK RN 工程约定
 
-先阅读 [工程标准](docs/engineering-baseline.md)、[架构](docs/architecture.md)、[API 契约](docs/public-api.d.ts) 和对应语义文档。当前已实现摄像头、图片和存储线路，实际验证和缺口见 docs/camera-implementation.md、docs/image-implementation.md 与 docs/storage-implementation.md；不要把未实施、未构建或未真机验证的内容报告为已支持。
+先阅读 [API 说明](docs/public-api.md)、[开发与验证](docs/development.md) 和源码公开声明。当前已实现摄像头、图片和存储线路；不要把未实施、未构建或未真机验证的内容报告为已支持。
 
 - TypeScript 承担业务，Core/Service/Media/Stream/Render/Foundation 的职责与关键名称对齐 iOS。参考目录为 /Users/xmax.ai/dev/Xmax/iOS/XmaxSDK；该目录只作参考，不是运行时、编译或发布依赖。
 - 关键 API 使用 iOS 原名和返回语义。保留 currentState、sessionID、taskID、fileURL、progress、set*Listener、stopLocalCameraStream、stopLocalImageStream。不得恢复旧草案的 addListener/getState/getAudioVolumes/stopLocalStream/dispose/XmaxMediaService。
@@ -17,4 +17,4 @@
 - SDK 重要类、公开接口、方法、组件和有语义约束的属性使用 RN 官方源码常见的 `/** ... */` JSDoc 块，先解释用途，再说明默认值、返回结果、错误或生命周期边界；仅在有帮助时使用 @param/@returns/@see 等标准标签。类型已表达的信息不重复堆砌；内部注释解释原因。注释按当前实现写，不把目标能力写成已支持，不照搬 Meta 版权或 Flow 标记。
 - App 层（Example/XLab）遵循同样的空行和 JSDoc 规范：组件、函数、事件处理回调之间分隔，组件内部按状态/ref、生命周期、副作用、事件处理和渲染组织逻辑段；不为排版调整 Hook 的调用顺序。重要页面、组件、Hook 和数据接口说明职责、资源所有权与业务边界，不能把仅 UI 的交互注释成已接通业务。SDK 和 App 的类方法空行、App 函数声明空行纳入 ESLint 检查。
 - 日志遵循 [日志说明](docs/logging.md)：全局 business/performance 位掩码、原生 OSLog/Logcat 输出；禁止把原始响应、凭据、提示词或原生异常正文写入日志。统计回调只读取当前平台支持的属性；不恢复临时逐帧日志。
-- Git 遵循 [提交与分支约定](docs/git-workflow.md)：英文 Conventional Commits，使用 main / develop / feature/<开发者>-v<版本号>，当前开发分支为 feature/yueting-v1.0.0。
+- Git 提交使用英文 Conventional Commits，按改动范围完成必要检查，不提交本地配置或密钥。分支约定：使用 main / develop / feature/<开发者>-v<版本号>，当前开发分支为 feature/yueting-v1.0.0。
