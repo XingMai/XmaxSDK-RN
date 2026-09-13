@@ -9,16 +9,10 @@
   <img src="https://img.shields.io/badge/Android-API_26%2B-3DDC84" alt="Android API 26+">
 </p>
 
-React Native SDK, providing access to Xmax's real-time, interactive video generation models. The models are optimized for low latency and cost efficiency, enabling instantaneous video transformations across diverse characters, outfits, and aesthetic styles. Also, they can dynamically respond to user gestures, allowing interactive virtual subjects to blend into real-world footage for immersive experiences. XmaxSDK implements an end-to-end pipeline to leverage these novel capabilities through concise TypeScript APIs, making it easy for developers to build next-generation interactive video experiences across the iOS and Android ecosystems.
+We introduce XmaxSDK, a React Native SDK designed for real-time interactive video generation via Xmax models. XmaxSDK implements an end-to-end pipeline covering media acquisition, video streaming, frame-by-frame generation, and on-device rendering, enabling developers to seamlessly integrate low-latency, high-fidelity video transformations into creative applications at a much lower cost than alternative solutions.
 
 <!-- Product demos from the iOS XLab reference application. -->
 <p align="center"><img src="./docs/images/xlab/generation-demo.gif" alt="X-Lab realtime generation demo" width="33%" /><img src="./docs/images/xlab/index-demo.gif" alt="X-Lab index demo" width="33%" /><img src="./docs/images/xlab/storage-demo.gif" alt="X-Lab storage demo" width="33%" /></p>
-
-<br>
-
-## What XmaxSDK does
-
-XmaxSDK offers a complete workflow that covers media acquisition, low-latency video communication, frame-by-frame generation, and in-app rendering. Whether processing live camera feeds, pre-recorded video, or still images, it streams media to our cloud inference service, applies on-device enhancement to the returned video, and renders the result to screen. With the entire workflow abstracted into simple API calls, integrating real-time video generation is seamless and intuitive.
 
 <br>
 
@@ -190,10 +184,7 @@ XmaxSDK offers a complete workflow that covers media acquisition, low-latency vi
 
 ## Installation
 
-The repository currently sets `private: true` in `package.json`. Use the
-**XLab workspace** to run and develop the SDK. Dependency adaptations are included
-in the SDK; no repository patches are required. Public npm distribution still
-requires updating the package's publishing and license metadata.
+The SDK is currently private. Run it through the included **XLab workspace**.
 
 From the repository root:
 
@@ -268,18 +259,21 @@ and binds the output to a video view. Run this within an async screen action.
 ```tsx
 import {
   XmaxClient,
+  XmaxEnvironment,
   RealtimeModel,
   CameraPosition,
 } from '@xmaxai/react-native-sdk';
 
-const client = new XmaxClient({ apiKey: 'YOUR_XMAX_API_KEY' });
+const client = new XmaxClient({
+  apiKey: 'YOUR_XMAX_API_KEY',
+  environment: XmaxEnvironment.global,
+});
 
 const realtime = client.createRealtimeManager({
   model: RealtimeModel.x2_0,
 });
 
 const localStream = await realtime.createLocalCameraStream({
-  videoFormat: { width: 704, height: 1280, fps: 24 },
   position: CameraPosition.front,
 });
 setLocalTrack(localStream.videoTrack);
@@ -296,8 +290,12 @@ await realtime.startGeneration({
 });
 ```
 
-Add the video view to your view hierarchy. The view displays a local camera
-preview until the first generated frame arrives.
+The view shows local preview until remote generation is ready, with touch
+interaction enabled by default.
+
+Choose `XmaxEnvironment.china` or `XmaxEnvironment.global` to match your API key;
+the default is `china`. Use `RealtimeModel.x2_0_pro` to select X2.0 Pro.
+Keep the client and manager stable for the screen's lifetime.
 
 <br>
 
@@ -330,54 +328,6 @@ See the [example project](#example-project) for state binding and a complete imp
 
 <br>
 
-### Realtime models
-
-Select `RealtimeModel.x2_0_pro` when creating a realtime manager or media service.
-XLab offers both models on Home and remembers the selected model for future sessions.
-
-| Model | Default camera format | Input resolution policy |
-| --- | --- | --- |
-| `x2_0` (`x2.0`) | 832 × 1472 at 30 fps | 600,000–1,280,000 pixels; dimensions aligned to 32 |
-| `x2_0_pro` (`x2.0-pro`) | 1024 × 1920 at 30 fps | Exactly 1024 × 1920 or 1920 × 1024 |
-
-Pro follows the iOS SDK: unsupported input dimensions are rejected, not automatically
-resized to a bucket. Image sources use the model's default frame rate when omitted;
-explicit valid frame rates are preserved. The Pro maximum input pixel metadata is
-2,100,000, though fixed resolution buckets take precedence over pixel bounds.
-
-`RealtimeVideoFormat` also accepts `minimumBitrate` and `maximumBitrate` in kbps.
-Omit either value or pass `null` to use its SDK default; a minimum of `0` means
-no minimum bitrate. `encoderPreference` defaults to
-`RealtimeVideoEncoderPreference.auto`; `maintainFramerate` and `maintainQuality`
-are also available. These settings are preserved when input dimensions are resized.
-Camera and image streams start with remote audio muted. Call
-`setRemoteAudioVolume()` after creating the local stream to change the volume.
-
-### Touch interaction and trajectory effects
-
-`XmaxVideo` and `XmaxRealtimeVideo` enable interaction by default on confirmed,
-visible remote video during generation. `isInteractionEnabled={false}` disables
-both touch sampling and effects. Local previews stay passive. The SDK maps fit/fill
-coordinates to model pixels, ignores fit black bars, and sends multi-touch `tracks`
-samples at 30 Hz, including stationary touches. Stop, disconnect, backgrounding,
-view removal and task replacement clear pending samples and animation resources.
-
-The default effect has a white core and green glow. To replace its visuals, pass a
-stable `trajectoryRenderer` implementing `TrajectoryEffectRendering`: `view` is a
-passive React element, and `renderBegan`, `renderMoved`, `renderEnded` and `reset`
-follow the iOS method names. `TrajectoryPoint` contains a stable `id`, viewport
-`location`, video-relative `normalizedLocation` and a monotonic `timestamp` in
-seconds. Use a separate renderer instance for each mounted video; replacement
-resets the previous renderer. Passing `null` restores the default.
-
-`DefaultTrajectoryEffectRenderer` can also be subclassed by overriding
-`colorsForTrajectory` with six-digit hex `core` and `glow` colors. The XLab custom
-trajectory card demonstrates alternating pink/blue fingers on image input. The
-RN effect uses bounded View primitives rather than the iOS bitmap renderer;
-device performance and exact visual parity still require device validation.
-
-<br>
-
 ### Listen for events
 
 After creating `realtime`, register the listeners you need before creating the
@@ -385,21 +335,11 @@ input stream or starting generation.
 
 | Listener | Purpose |
 | --- | --- |
-| `setStateListener` | Observe pipeline states during real-time generation. |
+| `setStateListener` | Observe pipeline states and termination reasons during real-time generation. |
 | `setNetworkQualityListener` | Monitor uplink and downlink network quality. |
 | `setPerformanceAlarmListener` | Detect device performance limitations or recovery, with a suggested video format when available. |
 
-Local media moves through `Idle → Preparing → Ready`. A camera becomes `Ready`
-after its first valid frame and preview binding. A connection moves through
-`Connecting → Connected → Generating`; termination passes through `Disconnecting`
-and ends in `Ready` when local media is retained, or `Idle` after `close()`.
-
-`state.reason` is `null` during a new operation and describes termination as
-`normal`, `orientationChanged`, or `failure` (with an `XmaxError`). The final state
-retains the most recent session ID and clears the task ID. Awaited operation
-errors reject their promises; background lifecycle failures arrive through
-`state.reason`. `orientationChanged` can be supplied to `disconnect({ reason })`;
-the RN SDK does not automatically handle device rotation. For example:
+For example, monitor state changes and errors:
 
 ```ts
 await realtime.setStateListener(state => {
@@ -411,48 +351,13 @@ await realtime.setStateListener(state => {
 });
 ```
 
-Use `XmaxError.from(error)` to normalize caught errors. It preserves recognized
-SDK error codes returned by the native bridge; unknown codes become
-`INTERNAL_ERROR`. Display `error.message` to retain the specific failure reason,
-and use `apiCode` and `httpStatus` when available. HTTP transport failures,
-including request timeouts, use `NETWORK_ERROR`; cancelled requests use
-`CANCELLED`. RTC join and generation-confirmation timeouts still use `TIMEOUT`.
+Handle rejected async calls with `try/catch` and normalize errors with
+`XmaxError.from(error)`. Lifecycle and cleanup failures are reported through
+`state.reason` after cleanup completes.
 
-<br>
-
-### Cancel an operation
-
-Camera/image creation, connection, generation, camera switching and local stream
-stopping accept an optional `signal`. Use `AbortController` to cancel a call,
-then await its promise before starting its replacement:
-
-```ts
-import { XmaxError, XmaxErrorCode } from '@xmaxai/react-native-sdk';
-
-const controller = new AbortController();
-const pending = realtime.startGeneration({
-  localStream,
-  context: { prompt: 'Watercolor' },
-  signal: controller.signal,
-});
-// On cancellation:
-controller.abort();
-try {
-  await pending;
-} catch (error) {
-  if (XmaxError.from(error).code !== XmaxErrorCode.cancelled) throw error;
-}
-```
-
-Cancellation rejects with `CANCELLED` after the operation unwinds and its required
-cleanup completes. Cancelling initial generation releases the connection while
-keeping local media. Cancelling a context update preserves the existing task.
-A completed call is unaffected by a later abort. Concurrent operations reject;
-`disconnect()` and `close()` interrupt active work and always finish cleanup.
-Cancellation reaches in-flight session requests, and stopping a heartbeat aborts
-its pending request. If a session response arrives before cancellation takes
-effect, the SDK closes that session during cleanup. Independent storage tasks
-are unaffected by realtime teardown; each storage task accepts its own `signal`.
+For camera input, bind the returned video track to a preview view. The SDK enters
+`Ready` after receiving a valid frame and binding the preview; observe this
+through `setStateListener`.
 
 <br>
 
@@ -460,9 +365,10 @@ are unaffected by realtime teardown; each storage task accepts its own `signal`.
 
 - **`disconnect()` — Stop Remote Generation**
 
-  Stops remote generation and cancels billing while keeping the local camera stream
-  and preview active. Use this when ending the online session but staying on the
-  current screen. You can start a new session later using the same local stream:
+  Stops remote generation, leaves the RTC room and requests server-session closure
+  while keeping the local camera or image stream and preview active. Use this when
+  ending the online session but staying on the current screen. You can start a new
+  session later using the same local stream:
 
   ```ts
   await realtime.disconnect()
@@ -480,11 +386,13 @@ are unaffected by realtime teardown; each storage task accepts its own `signal`.
 > **Note:** These methods are alternatives, not sequential steps. When exiting a
 > screen, call `close()` directly—there is no need to call `disconnect()` first.
 
+Backgrounding also closes realtime resources; recreate local media when returning.
+
 <br>
 
 > [!TIP]
-> For complete React Native usage examples, including image inputs and reference
-> images, see the [example project](./Example/XLab).
+> For complete examples, including image input, reference images and custom
+> touch effects, see the [example project](./Example/XLab).
 
 <br>
 
@@ -496,14 +404,14 @@ It demonstrates real-time generation using live camera feeds and static images.
 
 <p align="center"><img src="./docs/images/xlab/home.jpg" alt="X-Lab home" width="20%" /><img src="./docs/images/xlab/features.jpg" alt="X-Lab SDK features" width="20%" /><img src="./docs/images/xlab/storage.jpg" alt="X-Lab storage service" width="20%" /><img src="./docs/images/xlab/realtime-generation.jpg" alt="X-Lab realtime generation" width="20%" /><img src="./docs/images/xlab/trajectory-generation.jpg" alt="X-Lab trajectory generation" width="20%" /></p>
 
-The galleries show the iOS XLab reference application.
-
 <br>
 
 ## Dependencies
 
 - <ins><strong>VolcEngine RTC SDK</strong></ins> enables low-latency, real-time audio and video communication.
 - <ins><strong>Tencent Cloud COS SDK</strong></ins> handles media upload and download via object storage.
+
+See [`package.json`](./package.json) for dependency versions.
 
 <br>
 
