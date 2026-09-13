@@ -348,7 +348,7 @@ class FakeRtc {
   async startCamera() {
     this.camera = true;
   }
-  configureEncoding() {}
+  configureEncoding(format, minimum, maximum) { this.encoding = { format, minimum, maximum }; }
   configureImageSource() { this.imageSourceConfigured = true; }
   switchCamera() {}
   async join() {
@@ -357,7 +357,7 @@ class FakeRtc {
   send(message) {
     this.packets.push(JSON.parse(message));
   }
-  setRemoteAudioVolume() {}
+  setRemoteAudioVolume(value) { this.volume = value; }
   leave() {}
   stopLocalCapture() { this.camera = false; this.imagePath = null; }
   async close() {
@@ -424,7 +424,7 @@ test('camera validates buckets before permission and preserves accepted dimensio
   const flexible = createManager();
   try {
     const defaultStream = await flexible.createLocalCameraStream();
-    assert.deepEqual(defaultStream.videoTrack.videoFormat, { width: 832, height: 1472, fps: 24 });
+    assert.deepEqual(defaultStream.videoTrack.videoFormat, { width: 832, height: 1472, fps: 30 });
     await flexible.stopLocalCameraStream();
     const local = await flexible.createLocalCameraStream({
       videoFormat: { width: 640, height: 480, fps: 15 },
@@ -516,11 +516,21 @@ test('client accepts pro and sends its model value to the session API', async t 
 });
 
 // Fetch is replaced only within each sequential test. No live service is contacted.
-test('close during POST stops camera immediately and reclaims late session; manager can be reused', async t => {
+for (const honorsCancellation of [false, true]) {
+test(`close during POST aborts transport and reclaims any late session (transport honors abort: ${honorsCancellation})`, async t => {
   const post = defer();
   const calls = [];
+  let postSignal;
   t.mock.method(globalThis, 'fetch', async (_url, init) => {
     calls.push(init.method);
+    if (init.method === 'POST') {
+      postSignal = init.signal;
+      if (honorsCancellation) init.signal.addEventListener('abort', () => {
+        post.reject(new DOMException('Aborted', 'AbortError'));
+      }, { once: true });
+    } else {
+      assert.equal(init.signal.aborted, false, 'Cleanup must use a fresh request signal');
+    }
     return init.method === 'POST' ? post.promise : response({});
   });
   const manager = createManager();
@@ -533,9 +543,10 @@ test('close during POST stops camera immediately and reclaims late session; mana
     again = manager.close();
   await nextTurn();
   assert.equal(rtc.camera, false);
-  post.resolve(response(sessionPayload));
+  assert.equal(postSignal.aborted, true);
+  if (!honorsCancellation) post.resolve(response(sessionPayload));
   await Promise.all([closing, again, rejection]);
-  assert.deepEqual(calls, ['POST', 'DELETE']);
+  assert.deepEqual(calls, honorsCancellation ? ['POST'] : ['POST', 'DELETE']);
   assert.equal(rtc.joins, 0);
   assert.equal(local.videoTrack.videoFormat, null);
   assert.equal(manager.currentState.connectionState, 'Idle');
@@ -547,8 +558,10 @@ test('close during POST stops camera immediately and reclaims late session; mana
   await manager.close();
   assert.equal(lifecycleListeners.size, 0);
 });
+}
 
-test('XLab replacement queue serializes real SDK cancellation, late session cleanup and context updates', async t => {
+for (const honorsCancellation of [false, true]) {
+test(`XLab rapid replacement reaches C after cancelling A (transport honors abort: ${honorsCancellation})`, async t => {
   const { readFileSync } = require('node:fs');
   const { resolve } = require('node:path');
   const { Module } = require('node:module');
@@ -563,7 +576,12 @@ test('XLab replacement queue serializes real SDK cancellation, late session clea
   t.mock.method(globalThis, 'fetch', async (_url, init) => {
     requests.push(init.method);
     if (init.method === 'POST') {
-      if (++posts === 1) return firstPost.promise;
+      if (++posts === 1) {
+        if (honorsCancellation) init.signal.addEventListener('abort', () => {
+          firstPost.reject(new DOMException('Aborted', 'AbortError'));
+        }, { once: true });
+        return firstPost.promise;
+      }
       return response(sessionPayload);
     }
     return response({});
@@ -580,13 +598,13 @@ test('XLab replacement queue serializes real SDK cancellation, late session clea
   await nextTurn();
   const b = start('B'), c = start('C');
   await nextTurn();
-  assert.equal(posts, 1);
+  assert.equal(posts, honorsCancellation ? 2 : 1);
   assert.equal(rtc.camera, true);
-  firstPost.resolve(response(sessionPayload));
+  if (!honorsCancellation) firstPost.resolve(response(sessionPayload));
   await nextTurn();
   const packet = rtc.packets.find(value => value.event === 'start');
   assert.equal(packet.params.prompt, 'C');
-  assert.deepEqual(requests.slice(0, 3), ['POST', 'DELETE', 'POST']);
+  assert.deepEqual(requests, honorsCancellation ? ['POST', 'POST'] : ['POST', 'DELETE', 'POST']);
   rtc.emit({ type: 'sei', stream: { roomID: 'room-1', userID: 'bot-1' }, message: packet.uid });
   await Promise.all([a, b, c]);
   await start('D');
@@ -598,6 +616,7 @@ test('XLab replacement queue serializes real SDK cancellation, late session clea
   assert.equal(rtc.camera, true);
   assert.equal(manager.currentState.connectionState, 'Ready');
 });
+}
 
 test('generation requires task + room + bot SEI, updates reuse task, disconnect preserves camera', async t => {
   t.mock.method(globalThis, 'fetch', async (_url, init) =>
@@ -828,7 +847,7 @@ test('image pipeline uses prepared dimensions/path, no camera permissions, and c
   const manager = createManager();
   const local = await manager.createLocalImageStream({ fileURL: 'file:///original.heic' });
   const rtc = FakeRtc.instances.at(-1), images = FakeImages.instances.at(-1);
-  assert.deepEqual(local.videoTrack.videoFormat, { width: 1024, height: 768, fps: 24 });
+  assert.deepEqual(local.videoTrack.videoFormat, { width: 1024, height: 768, fps: 30 });
   assert.equal(local.videoTrack.position, null);
   assert.equal(rtc.imagePath, '/cache/prepared image.jpg');
   assert.equal(rtc.imageSourceConfigured, true);
@@ -1344,3 +1363,120 @@ test('close pauses capture but waits for a pending native join before destroying
   assert.equal(rtc.closed, true);
   assert.equal(manager.currentState.connectionState, 'Idle');
 });
+
+test('HTTP authentication failure preserves one error in both promise rejection and state notification', async t => {
+  t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({
+    success: false, code: 4011, message: 'Invalid API key',
+  }), { status: 401 }));
+  const manager = createManager(), states = [];
+  t.after(() => manager.close());
+  const local = await manager.createLocalCameraStream();
+  await manager.setStateListener(state => states.push(state));
+  let rejected;
+  await assert.rejects(manager.connect({ localStream: local }), error => {
+    rejected = error;
+    assert.equal(error.code, 'API_ERROR');
+    assert.equal(error.message, 'Invalid API key');
+    assert.equal(error.apiCode, 4011);
+    assert.equal(error.httpStatus, 401);
+    return true;
+  });
+  assert.equal(manager.currentState.connectionState, 'Ready');
+  assert.equal(manager.currentState.reason.error, rejected);
+  assert.equal(states.filter(state => state.reason?.type === 'failure').length, 1);
+  assert.equal(states.at(-1).reason.error, rejected);
+});
+
+for (const code of ['MEDIA_ERROR', 'CANCELLED']) {
+  test(`image frame startup preserves native ${code} through cleanup and rejection without duplicating preparation errors in state`, async t => {
+    const manager = createManager(), rtc = FakeRtc.instances.at(-1), states = [];
+    const images = FakeImages.instances.at(-1);
+    t.after(() => manager.close());
+    const nativeFailure = Object.assign(new Error('Unable to start native image frames'), { code });
+    const startup = t.mock.method(rtc, 'startImage', async () => { throw nativeFailure; });
+    await manager.setStateListener(state => states.push(state));
+    let rejected;
+    await assert.rejects(manager.createLocalImageStream({ fileURL: '/image.jpg' }), error => {
+      rejected = error;
+      assert(error instanceof XmaxError);
+      assert.equal(error.code, code);
+      assert.equal(error.message, nativeFailure.message);
+      return true;
+    });
+    assert.equal(manager.currentState.connectionState, 'Idle');
+    assert.equal(rtc.closed, true);
+    assert.deepEqual(images.removed, ['file:///cache/prepared%20image.jpg']);
+    // Like iOS, failures before media publication reject the call and reset to Idle.
+    assert.equal(manager.currentState.reason, null);
+    assert.equal(states.some(state => state.reason?.type === 'failure'), false);
+    startup.mock.restore();
+    await manager.createLocalImageStream({ fileURL: '/image.jpg' });
+    assert.equal(manager.currentState.connectionState, 'Ready');
+    if (code === 'MEDIA_ERROR') {
+      // A runtime failure after publication instead travels through the state listener.
+      rtc.emit({ type: 'error', scope: 'all', error: nativeFailure });
+      await nextTurn();
+      assert.equal(manager.currentState.connectionState, 'Idle');
+      assert.equal(manager.currentState.reason.error.code, rejected.code);
+      assert.equal(manager.currentState.reason.error.message, rejected.message);
+      assert.equal(states.filter(state => state.reason?.type === 'failure').length, 1);
+      assert.equal(states.at(-1).reason.error, manager.currentState.reason.error);
+    }
+  });
+}
+
+test('explicit bitrate limits use iOS defaults only for omitted sides and validate the final range', () => {
+  const base = { width: 640, height: 480, fps: 15 };
+  for (const [settings, expected] of [
+    [{ minimumBitrate: 0 }, { minimum: 0, maximum: 1000 }],
+    [{ maximumBitrate: 600 }, { minimum: 500, maximum: 600 }],
+    [{ minimumBitrate: null, maximumBitrate: null }, { minimum: 500, maximum: 1000 }],
+    [{ minimumBitrate: 0, maximumBitrate: 400 }, { minimum: 0, maximum: 400 }],
+    [{ minimumBitrate: 700, maximumBitrate: 700 }, { minimum: 700, maximum: 700 }],
+  ]) assert.deepEqual(resolveBitrates({ ...base, ...settings }), expected);
+  for (const settings of [
+    { minimumBitrate: -1 }, { minimumBitrate: NaN }, { minimumBitrate: 0.5 },
+    { maximumBitrate: 0 }, { maximumBitrate: Infinity }, { maximumBitrate: 2.5 },
+    { minimumBitrate: 1001 }, { maximumBitrate: 499 },
+    { minimumBitrate: 1000, maximumBitrate: 999 }, { encoderPreference: 'invalid' },
+  ]) assert.throws(() => resolveBitrates({ ...base, ...settings }), { code: 'INVALID_CONFIGURATION' });
+});
+
+for (const source of ['camera', 'image']) {
+  test(`${source}: resizing preserves explicit encoding, and creating media resets remote volume to zero`, async t => {
+    const manager = createManager();
+    t.after(() => manager.close());
+    const requested = { width: 640, height: 480, fps: 15,
+      minimumBitrate: 0, maximumBitrate: 3000, encoderPreference: 'maintainQuality' };
+    await manager.setRemoteAudioVolume(0.8);
+    const stream = source === 'camera'
+      ? await manager.createLocalCameraStream({ videoFormat: requested })
+      : await manager.createLocalImageStream({ fileURL: '/image.jpg', videoFormat: requested });
+    const expected = { ...requested, width: 896, height: 672 };
+    assert.deepEqual(stream.videoTrack.videoFormat, expected);
+    const rtc = FakeRtc.instances.at(-1);
+    assert.deepEqual(rtc.encoding, { format: expected, minimum: 0, maximum: 3000 });
+    assert.equal(manager.remoteAudioVolume, 0);
+    assert.equal(rtc.volume, 0);
+    await manager.setRemoteAudioVolume(0.6);
+    assert.equal(manager.remoteAudioVolume, 0.6);
+    assert.equal(rtc.volume, 0.6);
+    if (source === 'camera') {
+      await manager.switchCamera();
+      assert.deepEqual(stream.videoTrack.videoFormat, expected);
+    }
+  });
+
+  test(`${source}: invalid encoding limits reject before allocating native media`, async t => {
+    const manager = createManager();
+    t.after(() => manager.close());
+    const rtc = FakeRtc.instances.at(-1), images = FakeImages.instances.at(-1);
+    const videoFormat = { width: 640, height: 480, fps: 30, maximumBitrate: 1 };
+    await assert.rejects(source === 'camera'
+      ? manager.createLocalCameraStream({ videoFormat })
+      : manager.createLocalImageStream({ fileURL: '/image.jpg', videoFormat }), { code: 'INVALID_CONFIGURATION' });
+    assert.equal(rtc.encoding, undefined);
+    assert.equal(rtc.permissionCalls, 0);
+    assert.equal(images.prepared.length, 0);
+  });
+}

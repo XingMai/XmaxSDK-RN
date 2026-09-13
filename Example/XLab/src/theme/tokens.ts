@@ -13,5 +13,5 @@ export const colors = {
   storage: '#F5B86C',
 } as const;
 
-/** Matches iOS FeedTypography; individual base sizes follow the latest Feed components. */
-export const feedFont = (size: number) => size * 1.15;
+/** Uses the Feed base sizes without additional visual enlargement. */
+export const feedFont = (size: number) => size;

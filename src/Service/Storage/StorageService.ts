@@ -46,7 +46,10 @@ export class StorageService {
         await abortable(this.storage.fileSize(options.fileURL), signal);
 
         const config = parseStorageConfiguration(
-          await abortable(this.api.request('GET', '/cos/sts'), signal),
+          await abortable(
+            this.api.request('GET', '/cos/sts', undefined, signal),
+            signal,
+          ),
         );
         const objectKey = `${
           config.prefix
@@ -69,7 +72,12 @@ export class StorageService {
 
         const payload = record(
           await abortable(
-            this.api.request('POST', '/cos/image/check', { url: stored.url }),
+            this.api.request(
+              'POST',
+              '/cos/image/check',
+              { url: stored.url },
+              signal,
+            ),
             signal,
           ),
         );

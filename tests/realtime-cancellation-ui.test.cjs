@@ -222,12 +222,13 @@ function screenFixture(t, options = {}) {
     '../realtime/RealtimeLoadingOverlay': { RealtimeLoadingOverlay: 'Loading' },
     '../realtime/RealtimeErrorToast': { RealtimeErrorToast: 'Toast' },
   });
-  const draw = () => h.render(Screen, { apiKey: 'fixture', environment: 'china', fileURL: options.fileURL, model: options.model });
+  const draw = () => h.render(Screen, { apiKey: 'fixture', environment: 'china', fileURL: options.fileURL, model: options.model, entryReady: options.entryReady });
   const props = type => find(draw(), node => node.type === type).props;
   t.after(() => { h.dispose(); native.AppState.currentState = 'active'; });
   draw();
   return { props, connect, start, disconnect, localTrack, remoteTrack, contexts, models,
     dispose: h.dispose,
+    setEntryReady(value) { options.entryReady = value; draw(); },
     state(value) { manager.currentState = value; stateListener?.(value); },
     background(state) {
       native.AppState.currentState = state;
@@ -235,6 +236,86 @@ function screenFixture(t, options = {}) {
     },
     counts: () => ({ starts, stops, connects, previews, closes }) };
 }
+
+test('native entry readiness ignores closing and unfocused events, stays ready across cancelled back gestures, and unsubscribes', t => {
+  const h = hooks(), listeners = new Set();
+  let focused = true;
+  const { useRealtimeEntryReady } = load('navigation/useRealtimeEntryReady.ts', {
+    ...h.react, useLayoutEffect: h.react.useEffect,
+  });
+  const navigation = {
+    isFocused: () => focused,
+    addListener(name, listener) {
+      assert.equal(name, 'transitionEnd');
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+  const draw = () => h.render(() => useRealtimeEntryReady(navigation));
+  const finish = closing => [...listeners].forEach(listener => listener({ data: { closing } }));
+  t.after(h.dispose);
+  assert.equal(draw(), false);
+  finish(true);
+  assert.equal(draw(), false);
+  focused = false;
+  finish(false);
+  assert.equal(draw(), false);
+  focused = true;
+  finish(false);
+  assert.equal(draw(), true);
+  finish(true);
+  finish(false);
+  assert.equal(draw(), true, 'Returning from a cancelled back gesture must not recreate the media manager');
+  assert.equal(listeners.size, 1);
+  h.dispose();
+  assert.equal(listeners.size, 0);
+});
+
+for (const fileURL of [undefined, 'file:///fixture.jpg']) {
+  test(`${fileURL ? 'image' : 'camera'} entry displays loading before creating the SDK and starts preview once after transition`, async t => {
+    const f = screenFixture(t, { entryReady: false, fileURL });
+    await tick();
+    assert.equal(f.props('Loading').loading, true);
+    assert.equal(f.props('Panel').canSubmit, false);
+    assert.equal(f.props('Video').localTrack, null);
+    assert.deepEqual(f.models, []);
+    assert.equal(f.counts().previews, 0);
+    f.setEntryReady(true);
+    await tick();
+    assert.equal(f.models.length, 1);
+    assert.equal(f.counts().previews, 1);
+    assert.equal(f.props('Video').localTrack, f.localTrack);
+    f.setEntryReady(true);
+    await tick();
+    assert.equal(f.counts().previews, 1);
+    assert.equal(f.counts().closes, 0);
+  });
+}
+
+test('leaving during entry never allocates a media manager or starts a late preview', async t => {
+  const f = screenFixture(t, { entryReady: false });
+  f.dispose();
+  await tick();
+  assert.deepEqual(f.models, []);
+  assert.equal(f.counts().previews, 0);
+  assert.equal(f.counts().closes, 0);
+});
+
+test('backgrounding before entry finishes defers capture until active, and exit cancels pending recovery', async t => {
+  const f = screenFixture(t, { entryReady: false });
+  f.background('background');
+  f.setEntryReady(true);
+  await tick();
+  assert.equal(f.counts().previews, 0);
+  f.background('active');
+  await tick();
+  assert.equal(f.counts().previews, 1);
+  f.background('background');
+  f.background('active');
+  f.dispose();
+  await tick();
+  assert.equal(f.counts().previews, 1);
+});
 
 test('cancel during connect keeps preview, hides loading immediately and ignores a late remote track', async t => {
   const f = screenFixture(t);
@@ -530,9 +611,23 @@ test('storage selection, progress, safety errors and results follow the current 
   storage.safe = true;
   storage.progress = { fractionCompleted: 0.42 };
   assert(find(draw(), node => node.props?.children === 'Uploading 42%'));
-  assert(find(draw(), node => node.props?.children === 'Upload & check'));
+  assert(find(draw(), node => node.props?.children === 'Includes a safety check'));
+  assert(find(draw(), node => node.props?.children === 'Checking…'));
+  locale = 'zh-Hans';
+  assert(find(draw(), node => node.props?.children === '包含内容安全检查'));
+  assert(find(draw(), node => node.props?.children === '正在检测上传'));
+  locale = 'en';
+  storage.safe = false;
+  assert(find(draw(), node => node.props?.children === 'Uploading image'));
+  assert(find(draw(), node => node.props?.children === 'Uploading'));
+  storage.file = { ...storage.file, kind: 'video' };
+  assert(find(draw(), node => node.props?.children === 'Uploading video'));
+  locale = 'zh-Hans';
+  assert(find(draw(), node => node.props?.children === '正在上传视频'));
+  assert(find(draw(), node => node.props?.children === '正在上传'));
+  locale = 'en';
   storage.busy = null;
-  storage.error = 'storage.unsafe';
+  storage.error = { messageKey: 'storage.unsafe' };
   assert(find(draw(), node => node.props?.children === translateUI('storage.unsafe')));
   storage.result = { elapsed: 350, file: { url: 'https://example.com/result.jpg' } };
   assert(find(draw(), node => node.props?.children === 'Upload Result'));
@@ -559,6 +654,7 @@ test('locale selects the API environment and key slot for every feature route', 
     '../screens/CameraScreen': { CameraScreen: 'Camera' },
     '../screens/RealtimeScreen': { RealtimeScreen: 'Realtime' },
     '../screens/StorageScreen': { StorageScreen: 'Storage' },
+    './useRealtimeEntryReady': { useRealtimeEntryReady: () => false },
   });
   const tree = XLabNavigator(context);
   const routeComponent = name => find(tree, node => node.props?.name === name).props.component;
@@ -575,7 +671,10 @@ test('locale selects the API environment and key slot for every feature route', 
   assert.deepEqual(routes.at(-1), ['Camera', { environment: 'global', model: 'x2.0-pro' }]);
   for (const name of ['Camera', 'Image', 'Storage']) {
     const props = routeComponent(name)({ route: { params: { environment: 'global', model: 'x2.0-pro' } }, navigation }).props;
-    if (name !== 'Storage') assert.equal(props.model, 'x2.0-pro');
+    if (name !== 'Storage') {
+      assert.equal(props.model, 'x2.0-pro');
+      assert.equal(props.entryReady, false, 'Media routes forward native transition readiness');
+    }
     assert.equal(props.environment, 'global');
     assert.equal(props.apiKey, 'global-fixture');
   }
@@ -749,4 +848,142 @@ test('unmount closes realtime promptly while cancelled touch preparation finishe
   uploaded.resolve('late-upload.jpg');
   await tick();
   assert.equal(f.counts().connects, 0);
+});
+
+test('reference upload failure and retries use the latest language without recreating their tasks', async t => {
+  const h = hooks(), alerts = [], tasks = [];
+  const originalAlert = native.Alert;
+  native.Alert = { alert: (...args) => alerts.push(args) };
+  t.after(() => { h.dispose(); locale = 'zh-Hans'; native.Alert = originalAlert; });
+  const { useReferenceUploads } = load('realtime/useReferenceUploads.ts', h.react, {
+    'react-native-blob-util': {},
+    '@xmaxai/react-native-sdk': {},
+    './ReferenceUploadTask': { ReferenceUploadTask: class {
+      constructor(_prepare, _upload, _update, failure) { this.failure = failure; tasks.push(this); }
+      start() { return Promise.resolve(); }
+      close() { return Promise.resolve(); }
+    } },
+  });
+  const draw = () => h.render(() => useReferenceUploads('fixture', 'global', () => {}), {});
+  locale = 'zh-Hans';
+  draw().start({ id: 'custom-photo' }, { uri: 'file:///photo.jpg', type: 'image/jpeg' });
+  locale = 'en';
+  draw();
+  tasks[0].failure();
+  assert.deepEqual(alerts.at(-1), ['Reference upload failed', 'Tap the image to retry.']);
+  locale = 'zh-Hans';
+  draw().retry('custom-photo');
+  tasks[0].failure();
+  assert.deepEqual(alerts.at(-1), ['参考图上传失败', '点击图片可重试。']);
+  assert.equal(tasks.length, 1);
+});
+
+for (const language of ['zh-Hans', 'en']) {
+  test(`${language}: API failures reach the rendered realtime toast without losing the server explanation`, async t => {
+    locale = language;
+    t.after(() => { locale = 'zh-Hans'; });
+    const f = screenFixture(t);
+    await tick();
+    const failure = { code: 'API_ERROR', message: 'Invalid API key', apiCode: 4011, httpStatus: 401 };
+    f.state({ connectionState: 'ready', sessionID: null, taskID: null,
+      reason: { type: 'failure', error: failure } });
+    const h = hooks();
+    t.after(h.dispose);
+    const oldAccessibility = native.AccessibilityInfo;
+    native.AccessibilityInfo = { announceForAccessibility() {} };
+    t.after(() => { native.AccessibilityInfo = oldAccessibility; });
+    const { RealtimeErrorToast } = load('realtime/RealtimeErrorToast.tsx', h.react);
+    const draw = () => h.render(RealtimeErrorToast, f.props('Toast'));
+    assert.equal(find(draw(), node => node.type === 'Text').props.children, failure.message);
+
+    f.state({ connectionState: 'ready', reason: { type: 'failure', error: { code: 'API_ERROR', message: ' ' } } });
+    assert.equal(find(draw(), node => node.type === 'Text').props.children, translateUI('error.api'));
+  });
+}
+
+test('a rejected generation request keeps its concrete error message in the toast', async t => {
+  const f = screenFixture(t);
+  await tick();
+  f.props('Panel').onSubmit({ prompt: 'Transform' });
+  await tick();
+  f.disconnect.resolve();
+  f.connect.reject({ code: 'API_ERROR', message: 'API key expired' });
+  await tick();
+  await tick();
+  assert.equal(f.props('Toast').notice.message, 'API key expired');
+  assert.equal(f.props('Toast').notice.messageKey, undefined);
+});
+
+function storageErrorFixture(t, kind = 'image') {
+  const h = hooks(), page = hooks();
+  t.after(() => { h.dispose(); page.dispose(); locale = 'zh-Hans'; });
+  let uploadFailure, pickerFailure;
+  const calls = [];
+  const failUpload = route => async () => { calls.push(route); throw uploadFailure; };
+  const { useStorage } = load('storage/useStorage.ts', h.react, {
+    'react-native-image-picker': { launchImageLibrary: async () => {
+      if (pickerFailure) throw pickerFailure;
+      return { assets: [{ uri: 'file:///selected.jpg', type: `${kind}/test`, fileName: 'selected.jpg' }] };
+    } },
+    'react-native-blob-util': { fs: { dirs: { CacheDir: '/cache' },
+      cp: async () => {}, stat: async () => ({ size: 12 }), unlink: async () => {} } },
+    '@xmaxai/react-native-sdk': { XmaxClient: class { createStorageManager() {
+      return { uploadImage: failUpload('image'), uploadImageWithSafetyCheck: failUpload('safe'), uploadVideo: failUpload('video') };
+    } } },
+  });
+  const draw = () => h.render(() => useStorage('fixture-key', 'global'), {});
+  const { StorageScreen } = load('screens/StorageScreen.tsx', page.react, {
+    'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
+    '@xmaxai/react-native-sdk': { RealtimeModel: {}, XmaxSDKInfo: { version: '1.0.0' } },
+    '@react-native-clipboard/clipboard': {}, 'react-native-video': 'Video',
+    '../storage/useStorage': { useStorage: draw, formatFileSize: () => '12 B' },
+  });
+  const message = () => {
+    const tree = page.render(StorageScreen, { apiKey: 'fixture-key', environment: 'global', onBack() {} });
+    const alert = find(tree, node => node.props?.accessibilityRole === 'alert');
+    return alert ? find(alert, node => typeof node.props?.children === 'string').props.children : null;
+  };
+  draw();
+  return { draw, message, calls,
+    failUpload: value => { uploadFailure = value; }, failPicker: value => { pickerFailure = value; } };
+}
+
+for (const route of ['image', 'safe', 'video']) {
+  test(`storage ${route} renders the concrete SDK error and only translates an empty-message fallback`, async t => {
+    const f = storageErrorFixture(t, route === 'video' ? 'video' : 'image');
+    const { XmaxError } = require('../lib/commonjs/Foundation/Errors/XmaxError');
+    f.failUpload(new XmaxError({ code: 'API_ERROR', message: '  API key expired  ', httpStatus: 401 }));
+    await f.draw().pick();
+    assert.ok(f.draw().file, JSON.stringify(f.draw().error));
+    f.draw().upload(route === 'safe');
+    await tick();
+    assert.deepEqual(f.calls, [route]);
+    for (const language of ['en', 'zh-Hans']) {
+      locale = language;
+      assert.equal(f.message(), 'API key expired');
+    }
+    f.failUpload(new XmaxError({ code: 'API_ERROR', message: ' ' }));
+    f.draw().upload(route === 'safe');
+    assert.equal(f.message(), null, 'Retry clears the previous failure immediately');
+    await tick();
+    for (const language of ['en', 'zh-Hans']) {
+      locale = language;
+      assert.equal(f.message(), translateUI('storage.upload.error'));
+    }
+  });
+}
+
+test('storage selection retains native error explanations and falls back only when absent', async t => {
+  const f = storageErrorFixture(t);
+  for (const failure of [new Error('File cannot be read'), { code: 'READ_ERROR', message: 'File cannot be read' }]) {
+    f.failPicker(failure);
+    await f.draw().pick();
+    assert.equal(f.message(), 'File cannot be read');
+  }
+  f.failPicker(new Error(' '));
+  await f.draw().pick();
+  for (const language of ['en', 'zh-Hans']) {
+    locale = language;
+    assert.equal(f.message(), translateUI('storage.file.error'));
+  }
 });

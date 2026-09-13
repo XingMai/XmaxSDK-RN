@@ -1,5 +1,8 @@
 import { invalid } from '../../Foundation/Errors/XmaxError';
-import type { RealtimeVideoFormat } from '../../Service/Realtime/RealtimeTypes';
+import {
+  RealtimeVideoEncoderPreference,
+  type RealtimeVideoFormat,
+} from '../../Service/Realtime/RealtimeTypes';
 
 const at15: readonly (readonly [number, number])[] = [
   [14400, 50],
@@ -69,11 +72,35 @@ export function validateVideoFormat(format: RealtimeVideoFormat): void {
     throw invalid(
       'Video width and height must be positive even integers; fps must be a positive integer',
     );
+
+  if (
+    format.minimumBitrate != null &&
+    (!Number.isSafeInteger(format.minimumBitrate) || format.minimumBitrate < 0)
+  )
+    throw invalid('Minimum bitrate must be a non-negative integer');
+  if (
+    format.maximumBitrate != null &&
+    (!Number.isSafeInteger(format.maximumBitrate) || format.maximumBitrate <= 0)
+  )
+    throw invalid('Maximum bitrate must be a positive integer');
+  if (
+    format.minimumBitrate != null &&
+    format.maximumBitrate != null &&
+    format.minimumBitrate > format.maximumBitrate
+  )
+    throw invalid('Minimum bitrate must not exceed maximum bitrate');
+  if (
+    format.encoderPreference !== undefined &&
+    !Object.values(RealtimeVideoEncoderPreference).includes(
+      format.encoderPreference,
+    )
+  )
+    throw invalid('Invalid video encoder preference');
 }
 
 /**
- * Calculates minimum and maximum encoding rates in kbps from the iOS bitrate
- * tables.
+ * Resolves explicit upload limits and fills omitted limits using the iOS tables.
+ * The final range is validated after applying defaults.
  */
 export function resolveBitrates(format: RealtimeVideoFormat): {
   minimum: number;
@@ -81,6 +108,25 @@ export function resolveBitrates(format: RealtimeVideoFormat): {
 } {
   validateVideoFormat(format);
 
+  const defaults =
+    format.minimumBitrate != null && format.maximumBitrate != null
+      ? { minimum: format.minimumBitrate, maximum: format.maximumBitrate }
+      : defaultBitrates(format);
+  const minimum = format.minimumBitrate ?? defaults.minimum;
+  const maximum = format.maximumBitrate ?? defaults.maximum;
+  if (minimum > maximum)
+    throw invalid(
+      'Minimum bitrate must not exceed maximum bitrate after applying SDK defaults',
+    );
+
+  return { minimum, maximum };
+}
+
+/** Interpolates bitrate defaults from the resolved upload size and frame rate. */
+function defaultBitrates(format: RealtimeVideoFormat): {
+  minimum: number;
+  maximum: number;
+} {
   const pixels = format.width * format.height,
     b15 = interpolate(pixels, at15);
   const b30 =

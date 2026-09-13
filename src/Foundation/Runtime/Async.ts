@@ -66,18 +66,19 @@ export function waitFor<T>(
 
 /**
  * Schedules non-overlapping heartbeats and returns a function that stops future
- * ticks and error delivery.
+ * ticks and error delivery, and cancels the in-flight request.
  */
 export function repeatHeartbeat(
-  action: () => Promise<void>,
+  action: (signal: AbortSignal) => Promise<void>,
   onError: (error: unknown) => void,
   interval = 10000,
 ): () => void {
   let stopped = false;
+  const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout>;
   const tick = async () => {
     try {
-      await action();
+      await action(controller.signal);
     } catch (error) {
       if (!stopped) onError(error);
     }
@@ -89,6 +90,7 @@ export function repeatHeartbeat(
   return () => {
     stopped = true;
     clearTimeout(timer);
+    controller.abort();
   };
 }
 

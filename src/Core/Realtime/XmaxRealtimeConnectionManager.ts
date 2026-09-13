@@ -37,8 +37,8 @@ export class XmaxRealtimeConnectionManager {
     onFailure: (error: unknown) => void,
   ): Promise<RealtimeMediaStream> {
     this.lastSessionID = null;
-    // POST is intentionally allowed to settle after cancellation so its session can be reclaimed.
-    const session = await this.service.createSession(model);
+    // Abort the request, but still reclaim a session if its response wins the race.
+    const session = await this.service.createSession(model, signal);
     this.lastSessionID = session.id;
 
     try {
@@ -58,7 +58,7 @@ export class XmaxRealtimeConnectionManager {
           : null,
       );
       this.stopHeartbeat = repeatHeartbeat(
-        () => this.service.heartbeat(session.id),
+        heartbeatSignal => this.service.heartbeat(session.id, heartbeatSignal),
         error => {
           if (this.session === session) onFailure(error);
         },

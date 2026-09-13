@@ -56,17 +56,37 @@ export class XmaxError extends Error {
   }
 
   /**
-   * Preserves an existing XmaxError, or wraps an unknown failure as
-   * INTERNAL_ERROR.
+   * Preserves SDK errors, including known codes serialized by the native bridge.
+   * Unrecognized platform codes remain INTERNAL_ERROR.
    */
   static from(error: unknown): XmaxError {
     if (error instanceof XmaxError) return error;
 
+    const details =
+      typeof error === 'object' && error !== null
+        ? (error as Record<string, unknown>)
+        : null;
+    const code = Object.values(XmaxErrorCode).find(
+      value => value === details?.code,
+    );
+
     return new XmaxError({
-      code: XmaxErrorCode.internalError,
-      message: error instanceof Error ? error.message : String(error),
+      code: code ?? XmaxErrorCode.internalError,
+      message:
+        typeof details?.message === 'string' ? details.message : String(error),
+      ...(code && {
+        apiCode: numericMetadata(details?.apiCode),
+        httpStatus: numericMetadata(details?.httpStatus),
+      }),
     });
   }
+}
+
+/** Native bridge metadata must retain the public numeric-or-null contract. */
+function numericMetadata(value: unknown): number | null {
+  return typeof value === 'number' && Number.isSafeInteger(value)
+    ? value
+    : null;
 }
 
 export function invalid(message: string): XmaxError {

@@ -16,6 +16,7 @@ import { FeedScreen } from '../screens/FeedScreen';
 import { CameraScreen } from '../screens/CameraScreen';
 import { RealtimeScreen } from '../screens/RealtimeScreen';
 import { StorageScreen } from '../screens/StorageScreen';
+import { useRealtimeEntryReady } from './useRealtimeEntryReady';
 
 /** Navigation state contains input selection, while credentials stay in context. */
 export type XLabStackParamList = {
@@ -102,9 +103,11 @@ function CameraRoute({
   navigation,
 }: NativeStackScreenProps<XLabStackParamList, 'Camera'>) {
   const { configuration } = useXLabConfiguration();
+  const entryReady = useRealtimeEntryReady(navigation);
 
   return (
     <CameraScreen
+      entryReady={entryReady}
       model={route.params.model}
       apiKey={configuration.keys[route.params.environment].trim()}
       environment={route.params.environment}
@@ -118,9 +121,11 @@ function ImageRoute({
   navigation,
 }: NativeStackScreenProps<XLabStackParamList, 'Image'>) {
   const { configuration } = useXLabConfiguration();
+  const entryReady = useRealtimeEntryReady(navigation);
 
   return (
     <RealtimeScreen
+      entryReady={entryReady}
       model={route.params.model}
       apiKey={configuration.keys[route.params.environment].trim()}
       environment={route.params.environment}

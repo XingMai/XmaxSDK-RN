@@ -3,6 +3,7 @@ import {
   DefaultTrajectoryEffectRenderer,
   type TrajectoryEffectRendering,
   RealtimeModel,
+  RealtimeVideoEncoderPreference,
   realtimeModelSpecifications,
   CameraPosition,
   VideoContentMode,
@@ -33,7 +34,8 @@ export async function cameraContract(client: XmaxClient) {
     .resolveModelInputSize({ width: 640, height: 480 });
   const local = await manager.createLocalCameraStream({
     position: CameraPosition.front,
-    videoFormat: { ...size, fps: 24 },
+    videoFormat: { ...size, fps: 30, minimumBitrate: 0, maximumBitrate: 3000,
+      encoderPreference: RealtimeVideoEncoderPreference.maintainFramerate },
     useMicrophone: false,
   });
   const connected: RealtimeMediaStream = await manager.connect({

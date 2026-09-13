@@ -190,9 +190,10 @@ XmaxSDK offers a complete workflow that covers media acquisition, low-latency vi
 
 ## Installation
 
-The package is currently private. Use the repository's **XLab workspace** to run
-and develop the SDK. Standalone npm installation is pending the release of the
-required vendor fixes.
+The repository currently sets `private: true` in `package.json`. Use the
+**XLab workspace** to run and develop the SDK. Dependency adaptations are included
+in the SDK; no repository patches are required. Public npm distribution still
+requires updating the package's publishing and license metadata.
 
 From the repository root:
 
@@ -336,13 +337,21 @@ XLab offers both models on Home and remembers the selected model for future sess
 
 | Model | Default camera format | Input resolution policy |
 | --- | --- | --- |
-| `x2_0` (`x2.0`) | 832 × 1472 at 24 fps | 600,000–1,280,000 pixels; dimensions aligned to 32 |
+| `x2_0` (`x2.0`) | 832 × 1472 at 30 fps | 600,000–1,280,000 pixels; dimensions aligned to 32 |
 | `x2_0_pro` (`x2.0-pro`) | 1024 × 1920 at 30 fps | Exactly 1024 × 1920 or 1920 × 1024 |
 
 Pro follows the iOS SDK: unsupported input dimensions are rejected, not automatically
 resized to a bucket. Image sources use the model's default frame rate when omitted;
 explicit valid frame rates are preserved. The Pro maximum input pixel metadata is
 2,100,000, though fixed resolution buckets take precedence over pixel bounds.
+
+`RealtimeVideoFormat` also accepts `minimumBitrate` and `maximumBitrate` in kbps.
+Omit either value or pass `null` to use its SDK default; a minimum of `0` means
+no minimum bitrate. `encoderPreference` defaults to
+`RealtimeVideoEncoderPreference.auto`; `maintainFramerate` and `maintainQuality`
+are also available. These settings are preserved when input dimensions are resized.
+Camera and image streams start with remote audio muted. Call
+`setRemoteAudioVolume()` after creating the local stream to change the volume.
 
 ### Touch interaction and trajectory effects
 
@@ -389,7 +398,8 @@ and ends in `Ready` when local media is retained, or `Idle` after `close()`.
 `normal`, `orientationChanged`, or `failure` (with an `XmaxError`). The final state
 retains the most recent session ID and clears the task ID. Awaited operation
 errors reject their promises; background lifecycle failures arrive through
-`state.reason`. For example:
+`state.reason`. `orientationChanged` can be supplied to `disconnect({ reason })`;
+the RN SDK does not automatically handle device rotation. For example:
 
 ```ts
 await realtime.setStateListener(state => {
@@ -401,6 +411,13 @@ await realtime.setStateListener(state => {
 });
 ```
 
+Use `XmaxError.from(error)` to normalize caught errors. It preserves recognized
+SDK error codes returned by the native bridge; unknown codes become
+`INTERNAL_ERROR`. Display `error.message` to retain the specific failure reason,
+and use `apiCode` and `httpStatus` when available. HTTP transport failures,
+including request timeouts, use `NETWORK_ERROR`; cancelled requests use
+`CANCELLED`. RTC join and generation-confirmation timeouts still use `TIMEOUT`.
+
 <br>
 
 ### Cancel an operation
@@ -410,6 +427,8 @@ stopping accept an optional `signal`. Use `AbortController` to cancel a call,
 then await its promise before starting its replacement:
 
 ```ts
+import { XmaxError, XmaxErrorCode } from '@xmaxai/react-native-sdk';
+
 const controller = new AbortController();
 const pending = realtime.startGeneration({
   localStream,
@@ -430,6 +449,10 @@ cleanup completes. Cancelling initial generation releases the connection while
 keeping local media. Cancelling a context update preserves the existing task.
 A completed call is unaffected by a later abort. Concurrent operations reject;
 `disconnect()` and `close()` interrupt active work and always finish cleanup.
+Cancellation reaches in-flight session requests, and stopping a heartbeat aborts
+its pending request. If a session response arrives before cancellation takes
+effect, the SDK closes that session during cleanup. Independent storage tasks
+are unaffected by realtime teardown; each storage task accepts its own `signal`.
 
 <br>
 

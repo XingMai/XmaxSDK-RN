@@ -356,9 +356,7 @@ public final class XmaxRuntimeImplementation: NSObject, @unchecked Sendable {
         return
       }
 
-      guard [width, height, fps].allSatisfy({ $0.isFinite && $0 > 0 && $0.rounded(.down) == $0 }),
-        width * height <= 1_280_000, fps <= 60
-      else {
+      guard XmaxImageVideoFormat.isValid(width: width, height: height, fps: fps) else {
         promise.reject("Invalid image video format")
         return
       }

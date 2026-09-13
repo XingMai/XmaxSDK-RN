@@ -116,8 +116,7 @@ class XmaxRuntime(private val context: ReactApplicationContext) : NativeXmaxRunt
   @Synchronized override fun startImageVideo(token: String, path: String, width: Double, height: Double, fps: Double, promise: Promise) {
     try {
       check(isActive(token)) { "Media engine is not active" }
-      require(listOf(width, height, fps).all { it.isFinite() && it > 0 && it % 1 == 0.0 } &&
-        width * height <= 1280000 && fps <= 60) { "Invalid image video format" }
+      require(XmaxImageVideoFormat.isValid(width, height, fps)) { "Invalid image video format" }
       val engine = requireNotNull(XmaxRtcEngineAccess.current()) { "RTC engine is unavailable" }
       imageVideo.start(engine, path, width.toInt(), height.toInt(), fps.toInt(), { isActive(token) }, promise)
     } catch (error: Exception) { promise.reject("MEDIA_ERROR", error) }

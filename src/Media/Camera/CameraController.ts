@@ -51,10 +51,10 @@ export class CameraController {
 
     validateVideoFormat(requested);
     const format = Object.freeze({
+      ...requested,
       ...this.media.resolveModelInputSize(requested),
-      fps: requested.fps,
     });
-    validateVideoFormat(format);
+    const bitrates = resolveBitrates(format);
 
     if (!Object.values(CameraPosition).includes(position))
       throw invalid('Invalid camera position');
@@ -68,8 +68,6 @@ export class CameraController {
     try {
       await this.rtc.open(signal);
       ensureActive(signal);
-
-      const bitrates = resolveBitrates(format);
 
       await this.rtc.configureEncoding(
         format,

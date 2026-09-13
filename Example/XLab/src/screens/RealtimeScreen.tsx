@@ -57,6 +57,7 @@ export function RealtimeScreen({
   fileURL,
   customTrajectory = false,
   imageContentType,
+  entryReady = true,
 }: {
   /** Model captured when entering the page; defaults to X2.0. */
   model?: RealtimeModel;
@@ -68,6 +69,8 @@ export function RealtimeScreen({
   /** Selects the iOS XLab pink/blue renderer for the custom rendering example. */
   customTrajectory?: boolean;
   imageContentType?: string | undefined;
+  /** The native route enables media startup only after its opening transition. */
+  entryReady?: boolean;
 }) {
   const { t } = useLocalization();
   const insets = useSafeAreaInsets();
@@ -111,7 +114,11 @@ export function RealtimeScreen({
     if (alive.current && failure.code !== XmaxErrorCode.cancelled) {
       setError({
         message: failure.message,
-        messageKey: errorMessageKey(failure.code),
+        // Match iOS: preserve the SDK/service explanation instead of replacing
+        // every API failure (authentication, quota, etc.) with generic app copy.
+        ...(failure.message.trim()
+          ? {}
+          : { messageKey: errorMessageKey(failure.code) }),
         permissionError: [
           XmaxErrorCode.cameraPermissionDenied,
           XmaxErrorCode.microphonePermissionDenied,
@@ -159,6 +166,8 @@ export function RealtimeScreen({
   );
 
   useEffect(() => {
+    if (!entryReady) return;
+
     alive.current = true;
     mediaBusy.current = true;
     setLocalTrack(null);
@@ -280,7 +289,15 @@ export function RealtimeScreen({
         .cancel(() => realtime.close())
         .catch(() => {});
     };
-  }, [apiKey, environment, model, preview, showError, nextOperation]);
+  }, [
+    entryReady,
+    apiKey,
+    environment,
+    model,
+    preview,
+    showError,
+    nextOperation,
+  ]);
 
   /**
    * Replaces the generation task and displays its confirmed remote stream.

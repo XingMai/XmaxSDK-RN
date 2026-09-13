@@ -1,4 +1,3 @@
-import { errorMessageKey } from '../localization/ErrorMessages';
 import type { MessageKey } from '../localization/messages';
 import { useLocalization } from '../localization/LocalizationProvider';
 import { useEffect, useRef, useState } from 'react';
@@ -6,7 +5,6 @@ import { launchImageLibrary } from 'react-native-image-picker';
 import Blob from 'react-native-blob-util';
 import {
   XmaxClient,
-  XmaxError,
   type XmaxEnvironment,
   type XmaxUploadedFile,
   type StorageProgress,
@@ -28,6 +26,27 @@ export interface SelectedFile {
   byteCount: number;
 }
 
+/** Concrete errors retain their message; fallback copy follows language changes. */
+type StorageErrorNotice =
+  | { readonly message: string }
+  | { readonly messageKey: MessageKey };
+
+/** Matches iOS storage: show the error's explanation before page-specific fallback copy. */
+function storageErrorNotice(
+  error: unknown,
+  fallback: MessageKey,
+): StorageErrorNotice {
+  const message =
+    error !== null &&
+    typeof error === 'object' &&
+    'message' in error &&
+    typeof error.message === 'string'
+      ? error.message.trim()
+      : '';
+
+  return message ? { message } : { messageKey: fallback };
+}
+
 /**
  * Owns one storage screen's selection, transfer progress and cache files.
  *
@@ -38,7 +57,7 @@ export function useStorage(apiKey: string, environment: XmaxEnvironment) {
   const { t } = useLocalization();
   const [file, setFile] = useState<SelectedFile | null>(null);
   const [busy, setBusy] = useState<'picking' | 'uploading' | null>(null);
-  const [error, setError] = useState<MessageKey | null>(null);
+  const [error, setError] = useState<StorageErrorNotice | null>(null);
   const [progress, setProgress] = useState<StorageProgress | null>(null);
   const [safe, setSafe] = useState(false);
   const [result, setResult] = useState<{
@@ -148,8 +167,9 @@ export function useStorage(apiKey: string, environment: XmaxEnvironment) {
       setProgress(null);
       setResult(null);
       if (old) await Blob.fs.unlink(old.path).catch(() => {});
-    } catch {
-      if (mounted.current) setError('storage.pick.error');
+    } catch (failure) {
+      if (mounted.current)
+        setError(storageErrorNotice(failure, 'storage.file.error'));
     } finally {
       if (copied) await Blob.fs.unlink(copied).catch(() => {});
 
@@ -166,7 +186,7 @@ export function useStorage(apiKey: string, environment: XmaxEnvironment) {
   function upload(checksSafety: boolean) {
     if (locked.current || !selected.current) return;
     if (!apiKey.trim()) {
-      setError('storage.api.required');
+      setError({ messageKey: 'storage.api.required' });
       return;
     }
 
@@ -212,11 +232,7 @@ export function useStorage(apiKey: string, environment: XmaxEnvironment) {
           setResult({ file: uploaded, elapsed: Date.now() - startedAt });
       } catch (e) {
         if (mounted.current && !abort.signal.aborted)
-          setError(
-            e instanceof XmaxError
-              ? errorMessageKey(e.code)
-              : 'storage.upload.error',
-          );
+          setError(storageErrorNotice(e, 'storage.upload.error'));
       } finally {
         locked.current = false;
         if (controller.current === abort) controller.current = null;

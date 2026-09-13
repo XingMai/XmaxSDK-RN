@@ -57,6 +57,9 @@ export function useReferenceUploads(
   onUpdate: (id: string, update: ReferenceUploadUpdate) => void,
 ) {
   const { t } = useLocalization();
+  // Uploads and retries may outlive the language active when their task was created.
+  const translation = useRef(t);
+  translation.current = t;
   const tasks = useRef(new Map<string, ReferenceUploadTask>());
   const mounted = useRef(true);
   const update = useRef(onUpdate);
@@ -80,9 +83,10 @@ export function useReferenceUploads(
     if (!mounted.current) return;
 
     const task = new ReferenceUploadTask(
-      () => prepareReferenceFile(reference.id, asset, t),
+      () => prepareReferenceFile(reference.id, asset, translation.current),
       (file, signal) => {
-        if (!apiKey.trim()) throw new Error(t('storage.api.required'));
+        if (!apiKey.trim())
+          throw new Error(translation.current('storage.api.required'));
 
         const storage = new XmaxClient({
           apiKey,
@@ -101,10 +105,10 @@ export function useReferenceUploads(
       () => {
         if (mounted.current)
           Alert.alert(
-            t('realtime.reference.uploadError'),
+            translation.current('realtime.reference.uploadError'),
             apiKey.trim()
-              ? t('realtime.reference.retry')
-              : t('storage.api.required'),
+              ? translation.current('realtime.reference.retry')
+              : translation.current('storage.api.required'),
           );
       },
     );

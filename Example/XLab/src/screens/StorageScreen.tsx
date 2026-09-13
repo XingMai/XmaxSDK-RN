@@ -239,9 +239,13 @@ export function StorageScreen({
                         })}
                   </Label>
                   <Label style={styles.modeText}>
-                    {safe
-                      ? t('storage.upload.safe')
-                      : t('storage.upload.normal')}
+                    {t(
+                      file?.kind === 'video'
+                        ? 'storage.upload.video'
+                        : safe
+                        ? 'storage.upload.safety'
+                        : 'storage.upload.image',
+                    )}
                   </Label>
                 </View>
                 <View
@@ -276,7 +280,11 @@ export function StorageScreen({
                     ]}
                   >
                     <Label style={styles.buttonText}>
-                      {t('storage.upload.safe')}
+                      {t(
+                        busy === 'uploading' && safe
+                          ? 'storage.upload.checking'
+                          : 'storage.upload.safe',
+                      )}
                     </Label>
                   </Pressable>
                 )}
@@ -291,9 +299,13 @@ export function StorageScreen({
                   ]}
                 >
                   <Label style={styles.buttonText}>
-                    {file.kind === 'image'
-                      ? t('storage.upload.normal')
-                      : t('storage.upload.getURL')}
+                    {t(
+                      busy === 'uploading' && !safe
+                        ? 'storage.uploading'
+                        : file.kind === 'image'
+                        ? 'storage.upload.normal'
+                        : 'storage.upload.getURL',
+                    )}
                   </Label>
                 </Pressable>
               </View>
@@ -302,7 +314,7 @@ export function StorageScreen({
           {error && (
             <View accessibilityRole="alert" style={styles.errorBox}>
               <Label selectable style={styles.errorText}>
-                {t(error)}
+                {'message' in error ? error.message : t(error.messageKey)}
               </Label>
             </View>
           )}

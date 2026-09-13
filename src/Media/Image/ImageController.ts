@@ -10,10 +10,7 @@ import {
   type RealtimeMediaStream,
   type RealtimeModel,
 } from '../../Service/Realtime/RealtimeTypes';
-import {
-  resolveBitrates,
-  validateVideoFormat,
-} from '../../Stream/Encoding/EncodingController';
+import { resolveBitrates } from '../../Stream/Encoding/EncodingController';
 
 /**
  * Owns a prepared image and its static RTC source. The original file belongs
@@ -56,17 +53,16 @@ export class ImageController {
         throw invalid('Image stream frame rate must be greater than zero');
 
       const format = {
+        ...requested,
         ...this.media.resolveModelInputSize(requested ?? size),
         fps,
       };
 
-      validateVideoFormat(format);
+      const bitrates = resolveBitrates(format);
       prepared = await this.images.prepare(options.fileURL, format);
       ensureActive(signal);
       await this.rtc.open(signal);
       ensureActive(signal);
-
-      const bitrates = resolveBitrates(format);
 
       this.rtc.configureImageSource();
       await this.rtc.configureEncoding(

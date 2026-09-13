@@ -61,8 +61,8 @@ export interface XmaxRealtimeManaging {
   readonly localAudioVolume: number;
 
   /**
-   * The remote playback volume, from 0 to 1. Camera creation resets it to 0;
-   * image creation resets it to 1.
+   * The remote playback volume, from 0 to 1. Camera and image creation reset it
+   * to 0. Set a different volume after creating the local stream.
    */
   readonly remoteAudioVolume: number;
 

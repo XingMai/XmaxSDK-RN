@@ -43,11 +43,11 @@ export const realtimeModelSpecifications: Readonly<
     minimumInputPixels: 600000,
     maximumInputPixels: 1280000,
     inputSizeAlignment: 32,
-    defaultFrameRate: 24,
+    defaultFrameRate: 30,
     defaultCameraVideoFormat: Object.freeze({
       width: 832,
       height: 1472,
-      fps: 24,
+      fps: 30,
     }),
   }),
   [RealtimeModel.x2_0_pro]: Object.freeze({
@@ -133,14 +133,31 @@ export interface MediaSize {
   readonly height: number;
 }
 
-/**
- * Video dimensions in pixels and the capture frame rate.
- */
+/** Upload encoding policy, matching the iOS SDK's preferences. */
+export enum RealtimeVideoEncoderPreference {
+  /** Balances frame rate and resolution. The default policy. */
+  auto = 'auto',
+  /** Prioritizes frame rate. */
+  maintainFramerate = 'maintainFramerate',
+  /** Prioritizes resolution. */
+  maintainQuality = 'maintainQuality',
+}
+
+/** Video dimensions, frame rate and optional upload encoding settings. */
 export interface RealtimeVideoFormat extends MediaSize {
   /**
    * The frame rate in frames per second. Must be a positive integer.
    */
   readonly fps: number;
+
+  /** Minimum kbps; omitted/null uses SDK defaults, and 0 means no minimum. */
+  readonly minimumBitrate?: number | null;
+
+  /** Maximum kbps; omitted/null uses SDK defaults. Must be a positive integer. */
+  readonly maximumBitrate?: number | null;
+
+  /** Defaults to auto. Preserved when the SDK resolves input dimensions. */
+  readonly encoderPreference?: RealtimeVideoEncoderPreference;
 }
 
 /**
@@ -232,7 +249,7 @@ export interface RealtimeOperationOptions {
 /** Optional capture settings for createLocalCameraStream(). */
 export interface CameraStreamOptions extends RealtimeOperationOptions {
   /**
-   * Defaults to 832 x 1472 at 24 fps for x2.0,
+   * Defaults to 832 x 1472 at 30 fps for x2.0,
    * or 1024 x 1920 at 30 fps for x2.0-pro. Width and height must be positive even
    * integers. Empty model buckets resize dimensions using the model's bounds;
    * nonempty buckets require an exact width/height match without resizing.

@@ -27,8 +27,13 @@ export interface RealtimeSession {
 export class RealtimeSessionService {
   constructor(private readonly api: ApiServicing) {}
 
-  async createSession(model: string): Promise<RealtimeSession> {
-    const value = record(await this.api.request('POST', '/session', { model }));
+  async createSession(
+    model: string,
+    signal?: AbortSignal,
+  ): Promise<RealtimeSession> {
+    const value = record(
+      await this.api.request('POST', '/session', { model }, signal),
+    );
     const id = nonEmpty(value?.sessionUid);
     let extra: unknown = value?.modelExtra;
 
@@ -64,11 +69,13 @@ export class RealtimeSessionService {
     };
   }
 
-  async heartbeat(sessionID: string): Promise<void> {
+  async heartbeat(sessionID: string, signal?: AbortSignal): Promise<void> {
     const data = record(
       await this.api.request(
         'PUT',
         `/session/${encodeURIComponent(sessionID)}/heartbeat`,
+        undefined,
+        signal,
       ),
     );
 

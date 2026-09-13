@@ -30,6 +30,20 @@ mock.module('@volcengine/react-native-rtc', {
     MirrorType: { MIRROR_TYPE_NONE: 0, MIRROR_TYPE_RENDER: 1, MIRROR_TYPE_RENDER_AND_ENCODER: 2 },
     StreamIndex: { STREAM_INDEX_MAIN: 0 },
     VideoSourceType: { VIDEO_SOURCE_TYPE_EXTERNAL: 1 },
+    RenderMode: { ByteRTCRenderModeFit: 1, ByteRTCRenderModeHidden: 2 },
+    VideoCanvas: class {},
+    RemoteStreamKey: class {
+      constructor(roomId, userId, streamIndex) { Object.assign(this, { roomId, userId, streamIndex }); }
+    },
+    RTCVideo: class {
+      setLocalVideoCanvas(index, canvas) { this.calls.push(['detachLocal', index, canvas]); return 0; }
+      setRemoteVideoCanvas(key, canvas) { this.calls.push(['detachRemote', key, canvas]); return 0; }
+    },
+    RTCVideoEncoderPreference: { BALANCE: 3, MAINTAIN_FRAMERATE: 1, MAINTAIN_QUALITY: 2 },
+    t_RTCVideoEncoderPreference: {
+      ts_to_android: value => `android-${value}`,
+      ts_to_ios: value => `ios-${value}`,
+    },
     VideoEncoderConfig: class {},
     VideoCaptureConfig: class {
       constructor(width, height, fps) { Object.assign(this, { width, height, fps }); }
@@ -55,6 +69,8 @@ mock.module('@volcengine/react-native-rtc', {
         const engine = {
           calls,
           room,
+          setLocalVideoCanvas(index, canvas) { calls.push(['bindLocal', index, canvas]); return 0; },
+          setRemoteVideoCanvas(key, canvas) { calls.push(['bindRemote', key, canvas]); return 0; },
           setRtcVideoEventHandler(handler) { this.handler = handler; },
           startVideoCapture() { this.handler.onFirstLocalVideoFrameCaptured(0); },
           switchCamera(value) { calls.push(['camera', value]); return 0; },
@@ -62,7 +78,7 @@ mock.module('@volcengine/react-native-rtc', {
           setLocalVideoMirrorType(value) { calls.push(['mirror', value]); return 0; },
           setVideoOrientation(value) { calls.push(['orientation', value]); return 0; },
           setVideoCaptureConfig(value) { calls.push(['capture', value.width, value.height, value.fps]); },
-          setVideoEncoderConfig([value]) { calls.push(['encoder', value.width, value.height]); },
+          setVideoEncoderConfig([value]) { this.encoding = value; calls.push(['encoder', value.width, value.height]); },
           setDummyCaptureImagePath() { calls.push(['image']); },
           stopVideoCapture() { calls.push(['stopCapture']); },
           stopAudioCapture() {},
@@ -355,4 +371,56 @@ test('Android fails opening if the owned RTC handler cannot be adapted', async t
     });
   } finally { await rtc.close(); }
   assert.equal(release.mock.callCount(), 1);
+});
+
+for (const os of ['ios', 'android']) {
+  test(`${os}: stale canvas disposal cannot detach the replacement or a closed engine`, async () => {
+    platform.OS = os;
+    const rtc = new RtcManager();
+    await rtc.open(new AbortController().signal);
+    const { calls } = engines.at(-1);
+    for (const stream of [null, { roomID: 'room', userID: 'bot' }]) {
+      const method = stream ? 'detachRemote' : 'detachLocal';
+      rtc.bind('old', stream, 'fill');
+      rtc.bind('new', stream, 'fill');
+      rtc.unbind('old', stream);
+      assert.equal(calls.filter(call => call[0] === method).length, 0);
+      rtc.unbind('new', stream);
+      rtc.unbind('new', stream);
+      const detaches = calls.filter(call => call[0] === method);
+      assert.equal(detaches.length, 1);
+      if (stream) assert.deepEqual({ ...detaches[0][1] }, { roomId: 'room', userId: 'bot', streamIndex: 0 });
+      rtc.bind('next', stream, 'fill');
+      rtc.unbind('new', stream);
+      assert.equal(calls.filter(call => call[0] === method).length, 1);
+    }
+    await rtc.close();
+    const count = calls.length;
+    rtc.unbind('next', null);
+    rtc.unbind('next', { roomID: 'room', userID: 'bot' });
+    assert.equal(calls.length, count);
+  });
+}
+
+test('RTC encoding applies all upload settings to the platform-specific native configuration', async () => {
+  for (const os of ['ios', 'android']) {
+    platform.OS = os;
+    const rtc = new RtcManager();
+    try {
+      await rtc.open(new AbortController().signal);
+      for (const [encoderPreference, expected] of [[undefined, 3], ['auto', 3], ['maintainFramerate', 1], ['maintainQuality', 2]]) {
+        await rtc.configureEncoding({ width: 1024, height: 1920, fps: 30, encoderPreference }, 0, 4000);
+        const config = engines.at(-1).encoding;
+        assert.equal(config.width, 1024);
+        assert.equal(config.height, 1920);
+        assert.equal(config.frameRate, 30);
+        assert.equal(config.minBitrate, 0);
+        assert.equal(config.maxBitrate, 4000);
+        assert.equal(config[os === 'ios' ? 'ios_encoderPreference' : 'android_encodePreference'], `${os}-${expected}`);
+      }
+    } finally {
+      await rtc.close();
+      platform.OS = 'android';
+    }
+  }
 });

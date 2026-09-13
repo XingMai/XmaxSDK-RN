@@ -1,6 +1,7 @@
 import './RtcTypeCompatibility';
 import { XmaxLogger } from '../Logging/XmaxLogger';
 import { RtcStatsLogger } from './RtcStatsLogger';
+import { detachRtcCanvas } from './RtcCanvasBinding';
 import { PermissionsAndroid, Platform } from 'react-native';
 import {
   RTCManager as VendorRTCManager,
@@ -12,6 +13,8 @@ import {
   RoomMessageSendResult,
   VideoCaptureConfig,
   VideoEncoderConfig,
+  RTCVideoEncoderPreference,
+  t_RTCVideoEncoderPreference,
   VideoSourceType,
   VideoOrientation,
   VideoRotation,
@@ -35,6 +38,7 @@ import {
   type RealtimeNetworkQuality,
   type RealtimePerformanceAlarm,
   VideoContentMode,
+  RealtimeVideoEncoderPreference,
 } from '../../Service/Realtime/RealtimeTypes';
 import type { RealtimeSessionConnection } from '../../Service/Realtime/RealtimeSessionService';
 import type { RuntimeInfo } from '../Runtime/RuntimeInfo';
@@ -405,6 +409,21 @@ export class RtcManager {
     config.frameRate = format.fps;
     config.minBitrate = minBitrate;
     config.maxBitrate = maxBitrate;
+    const preference =
+      format.encoderPreference ===
+      RealtimeVideoEncoderPreference.maintainFramerate
+        ? RTCVideoEncoderPreference.MAINTAIN_FRAMERATE
+        : format.encoderPreference ===
+          RealtimeVideoEncoderPreference.maintainQuality
+        ? RTCVideoEncoderPreference.MAINTAIN_QUALITY
+        : RTCVideoEncoderPreference.BALANCE;
+    // The pinned native-backed config exposes separate platform properties.
+    if (Platform.OS === 'android')
+      config.android_encodePreference =
+        t_RTCVideoEncoderPreference.ts_to_android(preference);
+    else
+      config.ios_encoderPreference =
+        t_RTCVideoEncoderPreference.ts_to_ios(preference);
     check(
       // Android helper returns a Promise; iOS returns a number. Await normalizes both.
       await this.requireEngine().setVideoEncoderConfig([config]),
@@ -680,8 +699,10 @@ export class RtcManager {
   unbind(viewID: string, stream: RemoteStream | null): void {
     const key = stream ? JSON.stringify(stream) : 'local';
 
-    if (this.views.get(key) === viewID && this.engine && this.active)
-      this.bind('', stream, VideoContentMode.fill);
+    if (this.views.get(key) !== viewID || !this.engine || !this.active) return;
+
+    check(detachRtcCanvas(this.engine, stream), 'Unbind video view');
+    this.views.delete(key);
   }
 
   leave(): void {

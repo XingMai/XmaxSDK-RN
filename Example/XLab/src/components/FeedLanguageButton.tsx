@@ -158,7 +158,7 @@ const styles = StyleSheet.create({
     boxShadow: '0 8px 28px rgba(0,0,0,0.5)',
   },
   heading: {
-    fontSize: 12,
+    fontSize: 11,
     color: colors.secondary,
     paddingHorizontal: 16,
     paddingVertical: 12,
@@ -173,6 +173,6 @@ const styles = StyleSheet.create({
     borderTopColor: '#FFFFFF20',
   },
   highlighted: { backgroundColor: '#FFFFFF14' },
-  label: { flex: 1, fontSize: 15, color: colors.primary },
-  check: { width: 24, textAlign: 'right', fontSize: 17, color: colors.accent },
+  label: { flex: 1, fontSize: 13, color: colors.primary },
+  check: { width: 24, textAlign: 'right', fontSize: 15, color: colors.accent },
 });

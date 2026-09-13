@@ -262,7 +262,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         const stream = await prepare(token);
         token.setFailureScope('all');
         token.ensureCurrent();
-        await this.setRemoteAudioVolume(source === 'camera' ? 0 : 1);
+        await this.setRemoteAudioVolume(0);
         token.ensureCurrent();
         if (source === 'image')
           this.update(RealtimeConnectionState.ready, token);

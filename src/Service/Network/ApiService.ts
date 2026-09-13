@@ -1,4 +1,5 @@
 import { ApiLogger } from './ApiLogger';
+import { requestHTTP, type HttpTransport } from './HttpTransport';
 import { XmaxError, XmaxErrorCode } from '../../Foundation/Errors/XmaxError';
 import type { RuntimeInfo } from '../../Foundation/Runtime/RuntimeInfo';
 
@@ -18,12 +19,14 @@ export function nonEmpty(value: unknown): string | null {
 export interface ApiServicing {
   /**
    * Sends a request relative to the configured API base and returns the
-   * unwrapped data payload.
+   * unwrapped data payload. Forwards cancellation to the transport; a response
+   * that wins the cancellation race is returned so its resources can be reclaimed.
    */
   request(
     method: 'GET' | 'POST' | 'PUT' | 'DELETE',
     path: string,
     body?: unknown,
+    signal?: AbortSignal,
   ): Promise<unknown>;
 }
 
@@ -36,13 +39,14 @@ export class ApiService implements ApiServicing {
     private readonly apiKey: string,
     private readonly baseURL: string,
     private readonly runtime: RuntimeInfo,
-    private readonly transport: typeof fetch = fetch,
+    private readonly transport: HttpTransport = requestHTTP,
   ) {}
 
   async request(
     method: 'GET' | 'POST' | 'PUT' | 'DELETE',
     path: string,
     body?: unknown,
+    signal?: AbortSignal,
   ): Promise<unknown> {
     if (!this.apiKey)
       throw new XmaxError({
@@ -54,9 +58,21 @@ export class ApiService implements ApiServicing {
     let responseLogged = false;
     let status: number | null = null;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 15000);
+    let abortCause: 'cancelled' | 'timeout' | null = null;
+    const abort = (cause: 'cancelled' | 'timeout') => {
+      if (abortCause) return;
+
+      abortCause = cause;
+      controller.abort();
+    };
+    const cancel = () => abort('cancelled');
+    signal?.addEventListener('abort', cancel, { once: true });
+    if (signal?.aborted) cancel();
+    const timer = setTimeout(() => abort('timeout'), 15000);
 
     try {
+      if (controller.signal.aborted) throw new Error('Request aborted');
+
       const response = await this.transport(`${this.baseURL}${path}`, {
         method,
         headers: {
@@ -115,30 +131,57 @@ export class ApiService implements ApiServicing {
 
       return envelope.data;
     } catch (error) {
+      const failure = transportError(error, abortCause);
       if (!responseLogged)
         ApiLogger.failure(
           method,
           path,
           Date.now() - started,
-          error instanceof XmaxError
-            ? error.code
-            : controller.signal.aborted
-            ? XmaxErrorCode.timeout
-            : XmaxErrorCode.networkError,
+          failure.code,
           status,
         );
-      if (error instanceof XmaxError) throw error;
-
-      throw new XmaxError({
-        code: controller.signal.aborted
-          ? XmaxErrorCode.timeout
-          : XmaxErrorCode.networkError,
-        message: controller.signal.aborted
-          ? 'API request timed out'
-          : 'Unable to reach Xmax service',
-      });
+      throw failure;
     } finally {
       clearTimeout(timer);
+      signal?.removeEventListener('abort', cancel);
     }
   }
+}
+
+/** Keeps cancellation distinct from HTTP timeouts and preserves transport details. */
+function transportError(
+  error: unknown,
+  abortCause: 'cancelled' | 'timeout' | null,
+): XmaxError {
+  const details = record(error);
+  if (
+    abortCause === 'cancelled' ||
+    (abortCause === null &&
+      (details?.name === 'AbortError' || details?.code === 'ABORT_ERR'))
+  )
+    return new XmaxError({
+      code: XmaxErrorCode.cancelled,
+      message: 'API request was cancelled',
+    });
+  if (abortCause === null && error instanceof XmaxError) return error;
+
+  const message =
+    abortCause === 'timeout'
+      ? 'API request timed out'
+      : nonEmpty(details?.message) ??
+        nonEmpty(error) ??
+        'Network request failed';
+  const platformCode = details?.code;
+  const suffix =
+    abortCause === null &&
+    ((typeof platformCode === 'number' && Number.isFinite(platformCode)) ||
+      (typeof platformCode === 'string' && platformCode.trim()))
+      ? `（平台错误码：${platformCode}）`
+      : '';
+
+  return new XmaxError({
+    // HTTP timeouts are network failures; RTC confirmation waits retain TIMEOUT.
+    code: XmaxErrorCode.networkError,
+    message: `HTTP request failed: ${message}${suffix}`,
+  });
 }

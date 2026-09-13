@@ -110,3 +110,42 @@ test('storage logs operation outcome without URLs, credentials or native error t
   assert(!JSON.stringify(logs).includes('secret'));
   capture(0);
 });
+
+for (const stage of ['request', 'body']) {
+  test(`HTTP timeout during ${stage} rejects and logs NETWORK_ERROR`, async t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const logs = capture(1);
+    t.after(() => capture(0));
+    let signal;
+    const api = new ApiService('key', 'https://example.invalid', runtime, async (_url, init) => {
+      signal = init.signal;
+      const stalled = new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new DOMException('Request aborted', 'AbortError')), { once: true });
+      });
+      return stage === 'request' ? stalled : { status: 200, ok: true, text: () => stalled };
+    });
+    const pending = api.request('POST', '/session');
+    const rejected = assert.rejects(pending, { code: 'NETWORK_ERROR', message: 'HTTP request failed: API request timed out' });
+    await Promise.resolve();
+    t.mock.timers.tick(14999);
+    assert.equal(signal.aborted, false);
+    t.mock.timers.tick(1);
+    await rejected;
+    assert.equal(signal.aborted, true);
+    assert.equal(logs.length, 1);
+    assert.match(logs[0].message, /NETWORK_ERROR/);
+    assert.doesNotMatch(logs[0].message, /TIMEOUT/);
+  });
+}
+
+test('generation confirmation waits retain TIMEOUT independently of HTTP classification', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { waitFor } = require('../lib/commonjs/Foundation/Runtime/Async');
+  let removed = false;
+  const pending = waitFor(() => () => { removed = true; }, new AbortController().signal,
+    30000, 'Generation confirmation');
+  const rejected = assert.rejects(pending, { code: 'TIMEOUT' });
+  t.mock.timers.tick(30000);
+  await rejected;
+  assert.equal(removed, true);
+});
