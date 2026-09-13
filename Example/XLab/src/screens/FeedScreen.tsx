@@ -203,7 +203,7 @@ export function FeedScreen({
                 Platform.OS === 'ios' ? 'RN / iOS' : 'RN / Android',
               ],
               [t('feed.os'), Platform.OS === 'ios' ? '15.1+' : '8.0+'],
-              [t('feed.latestModel'), 'X2.0 PRO'],
+              [t('feed.latestModel'), 'X2.0-PRO'],
             ].map(([label, value]) => (
               <View key={label} style={styles.metric}>
                 <FeedText
@@ -315,7 +315,7 @@ export function FeedScreen({
                 accessibilityRole="radio"
                 accessibilityState={{ checked: configuration.model === model }}
                 accessibilityLabel={
-                  model === RealtimeModel.x2_0_pro ? 'X2.0 Pro' : 'X2.0'
+                  model === RealtimeModel.x2_0_pro ? 'X2.0-PRO' : 'X2.0'
                 }
                 onPress={() => onModelChange(model)}
                 style={[
@@ -326,7 +326,7 @@ export function FeedScreen({
                 <FeedText style={styles.modelDiamond}>◆</FeedText>
                 <View style={styles.modelText}>
                   <FeedText style={styles.modelTitle}>
-                    {model === RealtimeModel.x2_0_pro ? 'X2.0 Pro' : 'X2.0'}
+                    {model === RealtimeModel.x2_0_pro ? 'X2.0-PRO' : 'X2.0'}
                   </FeedText>
                   <FeedText style={styles.modelIdentifier}>
                     {model === RealtimeModel.x2_0_pro
