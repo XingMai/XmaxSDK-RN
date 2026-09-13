@@ -8,6 +8,7 @@ const nativeRuntime = {
   runtimeInfo: () => JSON.stringify({ platform: platform.OS, os_version: osVersion }),
   randomUUID: () => 'fixture-owner', acquire: () => true, isActive: () => true,
   async prepareRuntime() {},
+  adaptRtcVideoEvents(owner) { nativeCalls.push(['adaptEvents', owner]); return true; },
   release() {},
   async startImageVideo(...args) { nativeCalls.push(['start', ...args]); },
   stopImageVideo(owner) { nativeCalls.push(['stop', owner]); },
@@ -323,4 +324,35 @@ test('interaction receipts are recoverable, bounded and cleared on leaving the r
     room.handler.onRoomMessageSendResult(103, 3);
     assert.equal(events.length, 1);
   } finally { await rtc.close(); }
+});
+
+test('Android installs its event adapter after vendor handler registration, once per open', async t => {
+  const calls = [];
+  t.mock.method(nativeRuntime, 'adaptRtcVideoEvents', owner => {
+    assert.equal(typeof engines.at(-1).handler.onSEIMessageReceived, 'function');
+    calls.push(owner);
+    return true;
+  });
+  for (const os of ['ios', 'android']) {
+    platform.OS = os;
+    const rtc = new RtcManager();
+    try {
+      await rtc.open(new AbortController().signal);
+      await rtc.open(new AbortController().signal);
+    } finally { await rtc.close(); }
+    assert.equal(calls.length, os === 'android' ? 1 : 0);
+  }
+});
+
+test('Android fails opening if the owned RTC handler cannot be adapted', async t => {
+  platform.OS = 'android';
+  t.mock.method(nativeRuntime, 'adaptRtcVideoEvents', () => false);
+  const release = t.mock.method(nativeRuntime, 'release');
+  const rtc = new RtcManager();
+  try {
+    await assert.rejects(rtc.open(new AbortController().signal), {
+      code: 'RTC_ERROR', message: 'Unable to adapt RTC events',
+    });
+  } finally { await rtc.close(); }
+  assert.equal(release.mock.callCount(), 1);
 });

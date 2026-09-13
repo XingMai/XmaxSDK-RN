@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react';
 import { Alert } from 'react-native';
 import type { Asset } from 'react-native-image-picker';
 import Blob from 'react-native-blob-util';
-import { XmaxClient, type XmaxEnvironment } from '@xmax/react-native-sdk';
+import { XmaxClient, type XmaxEnvironment } from '@xmaxai/react-native-sdk';
 import type { RealtimeReference } from './RealtimeReferenceCatalog';
 import {
   ReferenceUploadTask,

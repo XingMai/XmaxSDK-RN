@@ -23,6 +23,12 @@ export class XmaxRealtimeGenerationManager {
     private readonly interaction: InteractionController,
   ) {}
 
+  /** Validates before allocating a connection or modifying the current task. */
+  validateContext(context: RealtimeContext | null | undefined): void {
+    if (!context && !this.context)
+      throw invalid('A realtime context is required for the first generation');
+  }
+
   async start(
     format: RealtimeVideoFormat,
     context: RealtimeContext | null | undefined,

@@ -1,4 +1,4 @@
-import { XmaxEnvironment } from '@xmax/react-native-sdk';
+import { XmaxEnvironment } from '@xmaxai/react-native-sdk';
 import type { XLabLocale } from '../localization/Localization';
 import type { SavedConfiguration } from './ConfigurationStore';
 

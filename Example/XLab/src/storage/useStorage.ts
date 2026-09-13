@@ -10,7 +10,7 @@ import {
   type XmaxEnvironment,
   type XmaxUploadedFile,
   type StorageProgress,
-} from '@xmax/react-native-sdk';
+} from '@xmaxai/react-native-sdk';
 
 /**
  * A selected media file copied into the storage screen's own cache.

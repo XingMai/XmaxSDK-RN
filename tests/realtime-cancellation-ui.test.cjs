@@ -161,8 +161,10 @@ function screenFixture(t, options = {}) {
   const localTrack = { id: 'local' }, remoteTrack = { id: 'remote' };
   let starts = 0, stops = 0, connects = 0, previews = 0, closes = 0;
   const contexts = [], models = [];
+  let stateListener = null;
   const manager = {
-    setStateListener: async () => {}, setErrorListener: async () => {},
+    currentState: { connectionState: options.preparing ? 'preparing' : 'ready', reason: null },
+    setStateListener: async listener => { stateListener = listener; },
     createLocalCameraStream: async () => { previews++; return { videoTrack: localTrack }; },
     createLocalImageStream: async () => { previews++; return { videoTrack: localTrack }; },
     connect: () => { connects++; return connects === 1 ? connect.promise : Promise.resolve({ videoTrack: remoteTrack }); },
@@ -175,11 +177,11 @@ function screenFixture(t, options = {}) {
     '../realtime/XLabTrajectoryRenderer': {},
     '../realtime/TouchAnimationReference': { uploadTouchAnimationReference: options.prepareTouch },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
-    '@xmax/react-native-sdk': {
+    '@xmaxai/react-native-sdk': {
       XmaxClient: class { createRealtimeManager({ model }) { models.push(model); return manager; } createStorageManager() { return {}; } },
       XmaxRealtimeVideo: 'Video', RealtimeModel: { x2_0: 'x2.0' }, VideoContentMode: {},
       RealtimeConnectionState: { idle: 'idle', connecting: 'connecting', connected: 'connected',
-        generating: 'generating', disconnected: 'disconnected', error: 'error' },
+        generating: 'generating', preparing: 'preparing', ready: 'ready' },
       XmaxError: { from: value => value },
       XmaxErrorCode: { cancelled: 'CANCELLED' },
     },
@@ -193,6 +195,7 @@ function screenFixture(t, options = {}) {
   draw();
   return { props, connect, start, disconnect, localTrack, remoteTrack, contexts, models,
     dispose: h.dispose,
+    state(value) { manager.currentState = value; stateListener?.(value); },
     background(state) {
       native.AppState.currentState = state;
       for (const listener of appStateListeners) listener(state);
@@ -480,7 +483,7 @@ test('storage selection, progress, safety errors and results follow the current 
   const storage = { file: null, busy: null, result: null, progress: null, error: null, safe: false };
   const { StorageScreen: Screen } = load('screens/StorageScreen.tsx', h.react, {
     'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
-    '@xmax/react-native-sdk': { RealtimeModel: { x2_0: 'x2.0', x2_0_pro: 'x2.0-pro' }, XmaxSDKInfo: { version: '1.0.0' } },
+    '@xmaxai/react-native-sdk': { RealtimeModel: { x2_0: 'x2.0', x2_0_pro: 'x2.0-pro' }, XmaxSDKInfo: { version: '1.0.0' } },
     '@react-native-clipboard/clipboard': { setString() {} },
     'react-native-video': 'Video',
     '../storage/useStorage': { useStorage: () => storage, formatFileSize: () => '1 KB' },
@@ -515,7 +518,7 @@ test('locale selects the API environment and key slot for every feature route', 
   const context = { configuration, store: { setKey: (...args) => writes.push(args), selectLanguage() {}, selectModel: model => { configuration.model = model; } } };
   const react = { createContext: () => ({ Provider: 'Provider' }), useContext: () => context };
   const sdk = { XmaxEnvironment: { china: 'china', global: 'global' } };
-  const localized = load('configuration/LocalizedConfiguration.ts', {}, { '@xmax/react-native-sdk': sdk });
+  const localized = load('configuration/LocalizedConfiguration.ts', {}, { '@xmaxai/react-native-sdk': sdk });
   const { XLabNavigator } = load('navigation/XLabNavigator.tsx', react, {
     '../configuration/LocalizedConfiguration': localized,
     '@react-navigation/native': { NavigationContainer: 'Navigation', DarkTheme: {} },
@@ -583,7 +586,7 @@ test('all home feature entries require the current environment key before naviga
       return { assets: [{ uri: 'file:///fixture.jpg', type: 'image/jpeg' }] };
     } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
-    '@xmax/react-native-sdk': { XmaxEnvironment: { china: 'china', global: 'global' }, RealtimeModel: { x2_0: 'x2.0', x2_0_pro: 'x2.0-pro' }, XmaxSDKInfo: { version: '1.0.0' } },
+    '@xmaxai/react-native-sdk': { XmaxEnvironment: { china: 'china', global: 'global' }, RealtimeModel: { x2_0: 'x2.0', x2_0_pro: 'x2.0-pro' }, XmaxSDKInfo: { version: '1.0.0' } },
     '../theme/tokens': { colors: {}, feedFont: value => value },
     '../components/FeedLanguageButton': { FeedLanguageButton: 'Language' },
     '../components/StorageFeatureCard': { StorageFeatureCard: 'Storage' },
@@ -660,4 +663,26 @@ test('XLab initializes camera and image managers with the route-selected Pro mod
   image.props('Panel');
   assert.equal(camera.models.length, 1);
   assert.equal(image.models.length, 1);
+});
+
+test('camera preview remains loading until Ready arrives through the state listener', async t => {
+  const f = screenFixture(t, { preparing: true });
+  await tick();
+  assert.equal(f.props('Video').localTrack, f.localTrack, 'The canvas must mount while Preparing');
+  assert.equal(f.props('Loading').loading, true);
+  assert.equal(f.props('Panel').canSubmit, false);
+  f.state({ connectionState: 'ready', sessionID: null, taskID: null, reason: null });
+  assert.equal(f.props('Loading').loading, false);
+  assert.equal(f.props('Panel').canSubmit, true);
+});
+
+test('background lifecycle failure shows a toast and retires tracks released by Idle', async t => {
+  const f = screenFixture(t);
+  await tick();
+  f.state({ connectionState: 'idle', sessionID: 'session', taskID: null,
+    reason: { type: 'failure', error: { code: 'RTC_ERROR', message: 'Camera unavailable' } } });
+  assert.equal(f.props('Toast').notice.message, 'Camera unavailable');
+  assert.equal(f.props('Video').localTrack, null);
+  assert.equal(f.props('Video').remoteTrack, null);
+  assert.equal(f.props('Loading').loading, false);
 });

@@ -7,7 +7,7 @@ const { setImmediate: nextTurn } = require('node:timers/promises');
 const ts = require('typescript');
 const filename = resolve(__dirname, '../Example/XLab/src/configuration/ConfigurationStore.ts');
 const compiled = new Module(filename, module);
-compiled.require = name => name === '@xmax/react-native-sdk'
+compiled.require = name => name === '@xmaxai/react-native-sdk'
   ? { XmaxEnvironment: { china: 'china', global: 'global' }, RealtimeModel: { x2_0: 'x2.0', x2_0_pro: 'x2.0-pro' } }
   : require(name);
 compiled._compile(ts.transpileModule(readFileSync(filename, 'utf8'), {

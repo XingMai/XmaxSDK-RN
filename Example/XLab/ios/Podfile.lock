@@ -2090,7 +2090,7 @@ DEPENDENCIES:
   - RNKeychain (from `../../../node_modules/react-native-keychain`)
   - RNScreens (from `../../../node_modules/react-native-screens`)
   - SocketRocket (from `build/rndeps-facades/SocketRocket`)
-  - "XmaxReactNativeSDK (from `../../../node_modules/@xmax/react-native-sdk`)"
+  - "XmaxReactNativeSDK (from `../../../node_modules/@xmaxai/react-native-sdk`)"
   - Yoga (from `build/rncore-facades/Yoga`)
 
 SPEC REPOS:
@@ -2290,7 +2290,7 @@ EXTERNAL SOURCES:
   SocketRocket:
     :path: build/rndeps-facades/SocketRocket
   XmaxReactNativeSDK:
-    :path: "../../../node_modules/@xmax/react-native-sdk"
+    :path: "../../../node_modules/@xmaxai/react-native-sdk"
   Yoga:
     :path: build/rncore-facades/Yoga
 

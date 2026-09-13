@@ -1,4 +1,4 @@
-import { RealtimeModel, XmaxEnvironment } from '@xmax/react-native-sdk';
+import { RealtimeModel, XmaxEnvironment } from '@xmaxai/react-native-sdk';
 import type { XLabLanguage } from '../localization/Localization';
 
 /** Separate secure-storage slots; no shared API Key fallback between environments. */

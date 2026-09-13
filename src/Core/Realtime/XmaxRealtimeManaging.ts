@@ -1,7 +1,7 @@
-import type { XmaxError } from '../../Foundation/Errors/XmaxError';
 import type {
   RealtimeConfiguration,
   RealtimeState,
+  RealtimeReason,
   RealtimeMediaStream,
   CameraStreamOptions,
   ImageStreamOptions,
@@ -14,17 +14,6 @@ import type {
  * Receives the current state when registered, then subsequent state changes.
  */
 export type RealtimeStateListener = (state: RealtimeState) => void;
-
-/**
- * Receives asynchronous failures that terminate the realtime flow.
- */
-export type RealtimeErrorListener = (error: XmaxError) => void;
-
-/**
- * Reports that camera capture is ready for preview, not that a view has
- * displayed a frame.
- */
-export type RealtimeCameraPreviewReadyListener = () => void;
 
 /**
  * Receives the latest uplink and downlink quality reported by RTC.
@@ -78,19 +67,6 @@ export interface XmaxRealtimeManaging {
   setStateListener(listener: RealtimeStateListener | null): Promise<void>;
 
   /**
-   * Replaces the listener for failures that terminate the realtime flow. Pass
-   * null to clear it.
-   */
-  setErrorListener(listener: RealtimeErrorListener | null): Promise<void>;
-
-  /**
-   * Replaces the camera capture-ready listener. Pass null to clear it.
-   */
-  setCameraPreviewReadyListener(
-    listener: RealtimeCameraPreviewReadyListener | null,
-  ): Promise<void>;
-
-  /**
    * Replaces the RTC network-quality listener. Pass null to clear it.
    */
   setNetworkQualityListener(
@@ -117,7 +93,8 @@ export interface XmaxRealtimeManaging {
   setRemoteAudioVolume(volume: number): Promise<void>;
 
   /**
-   * Requests camera permission and starts local capture.
+   * Requests camera permission and starts local capture. State becomes Preparing;
+   * after the first valid frame and a preview binding it becomes Ready.
    *
    * Defaults to the front camera at the model's default format, with the
    * microphone disabled. Stop the current local stream before creating another one.
@@ -173,15 +150,18 @@ export interface XmaxRealtimeManaging {
   /**
    * Interrupts pending realtime work and closes the session and room.
    *
-   * Keeps the local preview available for a later connection.
+   * Keeps local media and returns to Ready, or Idle when none remains.
+   * An optional reason is delivered with the final state. Preparing local media
+   * is unaffected when no connection operation is active.
    */
-  disconnect(): Promise<void>;
+  disconnect(options?: { reason?: RealtimeReason }): Promise<void>;
 
   /**
    * Interrupts pending work and releases the session, RTC and local media.
    *
-   * Repeated calls share the in-progress cleanup. The manager remains reusable
-   * and retains its business listeners. Independent storage tasks are
+   * Finishes in Idle with a termination reason. Repeated calls share the
+   * in-progress cleanup. The manager remains reusable and retains its business
+   * listeners. Independent storage tasks are
    * unaffected.
    */
   close(): Promise<void>;

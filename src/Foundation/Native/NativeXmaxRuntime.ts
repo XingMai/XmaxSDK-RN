@@ -14,6 +14,9 @@ export interface Spec extends TurboModule {
   /** Hides the matching SDK container on the native UI thread before RTC teardown. */
   hideVideoContainer(reactTag: number, nativeID: string): Promise<void>;
 
+  /** Atomically commits a completed download beside its destination. */
+  replaceFile(sourcePath: string, destinationPath: string): Promise<void>;
+
   requestPermissions(useMicrophone: boolean): Promise<string>;
 
   /** Reads orientation-corrected pixel dimensions without returning pixel data to JS. */
@@ -39,6 +42,9 @@ export interface Spec extends TurboModule {
 
   /** Reads platform UI state asynchronously before acquiring a media lease. */
   prepareRuntime(): Promise<void>;
+
+  /** Normalizes Android RTC stream events for the current owner before JS decoding. */
+  adaptRtcVideoEvents(owner: string): boolean;
 
   acquire(owner: string): boolean;
 

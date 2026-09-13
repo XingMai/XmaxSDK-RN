@@ -1,5 +1,5 @@
 import Blob from 'react-native-blob-util';
-import type { XmaxStorageManaging } from '@xmax/react-native-sdk';
+import type { XmaxStorageManaging } from '@xmaxai/react-native-sdk';
 
 /** Copies picker bytes into an owned file for COS, then removes only that temporary copy. */
 export async function uploadTouchAnimationReference(

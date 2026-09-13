@@ -1,3 +1,5 @@
+import type { XmaxError } from '../../Foundation/Errors/XmaxError';
+
 /**
  * The generation models currently supported by this SDK.
  */
@@ -87,12 +89,12 @@ export enum VideoContentMode {
  */
 export enum RealtimeConnectionState {
   idle = 'Idle',
+  preparing = 'Preparing',
+  ready = 'Ready',
   connecting = 'Connecting',
   connected = 'Connected',
   generating = 'Generating',
   disconnecting = 'Disconnecting',
-  disconnected = 'Disconnected',
-  error = 'Error',
 }
 
 /**
@@ -157,14 +159,23 @@ export interface RealtimeContext {
   readonly referencePath?: string | null;
 }
 
+/** Why a realtime lifecycle ended; new operations clear the previous reason. */
+export type RealtimeReason =
+  | { readonly type: 'normal' }
+  | { readonly type: 'orientationChanged' }
+  | { readonly type: 'failure'; readonly error: XmaxError };
+
 /**
  * An immutable snapshot of the current connection and generation identifiers.
  */
 export interface RealtimeState {
   readonly connectionState: RealtimeConnectionState;
 
+  /** Normal termination, display rotation or a lifecycle failure; null during new work. */
+  readonly reason: RealtimeReason | null;
+
   /**
-   * The allocated session identifier, or null when no session is held.
+   * The current or most recent session identifier, retained through termination.
    */
   readonly sessionID: string | null;
 

@@ -6,7 +6,7 @@
     "exactOptionalPropertyTypes": true,
     "skipLibCheck": true,
     "paths": {
-      "@xmax/react-native-sdk": ["../../src/index.ts"]
+      "@xmaxai/react-native-sdk": ["../../src/index.ts"]
     },
     "types": ["react"]
   },

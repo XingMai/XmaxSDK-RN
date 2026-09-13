@@ -14,20 +14,20 @@ const native = {
   },
   async cancel(key, taskID) { cancellations.push([key, taskID]); },
 };
-mock.module('react-native', { namedExports: { Platform: platform } });
+mock.module('react-native', { namedExports: { Platform: platform, TurboModuleRegistry: { getEnforcing: () => native } } });
 mock.module('react-native-cos-sdk-nobeacon', {
-  defaultExport: {
+  defaultExport: { default: {
     async registerTransferManger(key, configuration, policy) {
       registrations.push({ key, configuration, policy });
       const manager = new CosTransferManger(key, native);
       managers.set(key, manager);
       return manager;
     },
-  },
+  } },
 });
 mock.module('react-native-blob-util', { defaultExport: { fs: {} } });
 mock.module(require.resolve('../lib/commonjs/Foundation/Native/NativeXmaxRuntime.js'), {
-  defaultExport: {},
+  defaultExport: { randomUUID: require('node:crypto').randomUUID },
 });
 const { StorageManager } = require('../lib/commonjs/Foundation/Storage/StorageManager');
 
@@ -62,8 +62,8 @@ test('all media use simple-upload configuration through the real COS JS bridge o
       await nextTurn();
       const request = requests.at(-1);
       assert.equal(request[3], `file:///tmp/${file}`);
-      assert.equal(request[4], undefined, 'never resume a multipart upload ID');
-      assert.equal(request[8], undefined, 'never install a multipart initialization callback');
+      assert.equal(request[4], null, 'never resume a multipart upload ID');
+      assert.equal(request[8], null, 'never install a multipart initialization callback');
       assert.equal(request[12].sessionToken, 'fixture-token');
       assert.deepEqual(request[13], { 'Content-Type': type });
       succeed(request);
@@ -76,9 +76,12 @@ test('all media use simple-upload configuration through the real COS JS bridge o
     if (os === 'ios') {
       // iOS 6.5.5 dispatches file uploads by contentLength > mutilThreshold;
       // forceSimpleUpload alone is ignored by the pinned RN bridge.
+      assert.equal(registration.configuration.host, endpoint);
+      assert.equal(registration.configuration.isHttps, undefined);
       assert.equal(registration.policy.divisionForUpload, Number.MAX_SAFE_INTEGER);
       assert(registration.policy.divisionForUpload > 5 * 1024 ** 3);
     } else {
+      assert.equal(registration.configuration.isHttps, true);
       assert.equal(registration.policy.divisionForUpload, undefined, 'do not overflow Android getInt');
     }
   }
@@ -138,5 +141,73 @@ test('simple uploads preserve concurrent progress isolation and cancel a late-cr
   await second;
   manager.runProgressCallBack(secondRequest[7], 2, 2);
   assert.deepEqual(progress, ['second']);
-  assert.equal(manager.callbackGroups.size, 0);
+  assert.equal(manager.resultListeners.size, 0);
+  assert.equal(manager.progressCallBacks.size, 0);
+});
+
+test('SDK callback ownership is released on every terminal path with the official manager unchanged', async () => {
+  const { CosUploadAdapter } = require('../lib/commonjs/Foundation/Storage/CosUploadAdapter');
+  const adapter = await CosUploadAdapter.register({}, {});
+  const manager = managers.get(registrations.at(-1).key);
+  const received = [];
+  const parameters = signal => ({
+    signal, region: 'fixture', sessionCredentials: {}, customHeaders: {},
+    progressCallback: () => received.push('progress'),
+    resultListener: { successCallBack: () => received.push('success'), failCallBack: () => received.push('failure') },
+  });
+  for (const outcome of ['success', 'failure', 'cancel']) {
+    const controller = new AbortController();
+    const task = await adapter.upload('bucket', 'key', 'file:///tmp/a.jpg', parameters(controller.signal));
+    const request = requests.at(-1);
+    assert.equal(adapter.pending.size, 1);
+    manager.runProgressCallBack(request[7], 1, 2);
+    if (outcome === 'success') manager.runResultSuccessCallBack(request[5]);
+    else if (outcome === 'failure') manager.runResultFailCallBack(request[5]);
+    else await task.cancel();
+    assert.equal(adapter.pending.size, 0);
+    const count = received.length;
+    manager.runProgressCallBack(request[7], 2, 2);
+    manager.runResultSuccessCallBack(request[5]);
+    manager.runResultFailCallBack(request[5]);
+    assert.equal(received.length, count);
+  }
+  let rejectStart;
+  nextTask = new Promise((_, reject) => { rejectStart = reject; });
+  const controller = new AbortController();
+  const starting = adapter.upload('bucket', 'key', 'file:///tmp/a.jpg', parameters(controller.signal));
+  const rejected = assert.rejects(starting, /start failed/);
+  assert.equal(adapter.pending.size, 1);
+  controller.abort();
+  assert.equal(adapter.pending.size, 0, 'abort frees closures before native task creation finishes');
+  rejectStart(Error('start failed'));
+  await rejected;
+  nextTask = undefined;
+  const originalUpload = native.upload;
+  native.upload = async () => { throw Error('native rejection'); };
+  try {
+    await assert.rejects(adapter.upload('bucket', 'key', 'file:///tmp/a.jpg', parameters(new AbortController().signal)), /native rejection/);
+    assert.equal(adapter.pending.size, 0);
+  } finally { native.upload = originalUpload; }
+  assert.equal(manager.progressCallBacks.size, 0);
+  assert.equal(manager.resultListeners.size, 0);
+});
+
+test('HTTP endpoints retain their scheme and custom port without the iOS NSNumber setter', async () => {
+  for (const os of ['ios', 'android']) {
+    platform.OS = os;
+    const endpoint = `http://${os}.http.fixture.example:8080`;
+    const task = new StorageManager().upload(options(endpoint));
+    await nextTurn();
+    const { configuration } = registrations.at(-1);
+    if (os === 'ios') {
+      assert.equal(configuration.host, endpoint);
+      assert(!Object.hasOwn(configuration, 'isHttps'));
+    } else {
+      assert.equal(configuration.host, 'android.http.fixture.example');
+      assert.equal(configuration.port, 8080);
+      assert.equal(configuration.isHttps, false);
+    }
+    succeed(requests.at(-1));
+    await task;
+  }
 });

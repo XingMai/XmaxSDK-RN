@@ -7,7 +7,7 @@ import {
   createNativeStackNavigator,
   type NativeStackScreenProps,
 } from '@react-navigation/native-stack';
-import type { RealtimeModel, XmaxEnvironment } from '@xmax/react-native-sdk';
+import type { RealtimeModel, XmaxEnvironment } from '@xmaxai/react-native-sdk';
 import type {
   ConfigurationStore,
   SavedConfiguration,
@@ -157,6 +157,7 @@ export function XLabNavigator(props: ConfigurationContextValue) {
           screenOptions={{
             headerShown: false,
             headerBackButtonMenuEnabled: false,
+            orientation: 'portrait_up',
             contentStyle: styles.content,
             animation: 'slide_from_right',
             gestureEnabled: true,

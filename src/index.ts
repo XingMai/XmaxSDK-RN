@@ -1,3 +1,5 @@
+import './Foundation/RTC/RtcTypeCompatibility';
+
 /**
  * Version metadata for the installed Xmax React Native SDK.
  */
@@ -14,8 +16,6 @@ export {
 export type {
   XmaxRealtimeManaging,
   RealtimeStateListener,
-  RealtimeErrorListener,
-  RealtimeCameraPreviewReadyListener,
   RealtimeNetworkQualityListener,
   RealtimePerformanceAlarmListener,
 } from './Core/Realtime/XmaxRealtimeManaging';
@@ -24,11 +24,7 @@ export * from './Service/Realtime/RealtimeTypes';
 
 export type { MediaServicing } from './Service/Media/MediaService';
 
-export {
-  XmaxError,
-  XmaxErrorCode,
-  XmaxErrorSeverity,
-} from './Foundation/Errors/XmaxError';
+export { XmaxError, XmaxErrorCode } from './Foundation/Errors/XmaxError';
 
 export { XmaxVideo, type XmaxVideoProps } from './Render/Video/XmaxVideo';
 

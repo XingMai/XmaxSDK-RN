@@ -6,13 +6,12 @@ import { apiBaseURLs } from '../XmaxConfiguration';
 import { RtcManager } from '../../Foundation/RTC/RtcManager';
 import { XmaxLogger } from '../../Foundation/Logging/XmaxLogger';
 import { ensureActive, waitFor } from '../../Foundation/Runtime/Async';
-import { RealtimeCoordinator } from './RealtimeCoordinator';
 import {
-  invalid,
-  XmaxError,
-  XmaxErrorCode,
-  XmaxErrorSeverity,
-} from '../../Foundation/Errors/XmaxError';
+  RealtimeCoordinator,
+  type RealtimeOperation,
+  type TerminationScope,
+} from './RealtimeCoordinator';
+import { invalid, XmaxError } from '../../Foundation/Errors/XmaxError';
 import { ApiService } from '../../Service/Network/ApiService';
 import { RealtimeSessionService } from '../../Service/Realtime/RealtimeSessionService';
 import {
@@ -33,12 +32,11 @@ import {
   type RealtimeContext,
   type RealtimeMediaStream,
   type RealtimeState,
+  type RealtimeReason,
 } from '../../Service/Realtime/RealtimeTypes';
 import type {
   XmaxRealtimeManaging,
   RealtimeStateListener,
-  RealtimeErrorListener,
-  RealtimeCameraPreviewReadyListener,
   RealtimeNetworkQualityListener,
   RealtimePerformanceAlarmListener,
 } from './XmaxRealtimeManaging';
@@ -51,27 +49,19 @@ import type {
  */
 export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   readonly options: Readonly<RealtimeConfiguration>;
-  private readonly coordinator = new RealtimeCoordinator();
+  private readonly coordinator: RealtimeCoordinator;
   private readonly render: RenderController;
   private readonly media: MediaController;
   private readonly connection: XmaxRealtimeConnectionManager;
   private readonly generation: XmaxRealtimeGenerationManager;
   private readonly rtc: RtcManager;
   private readonly interaction: InteractionController;
-  private state: RealtimeState = Object.freeze({
-    connectionState: RealtimeConnectionState.idle,
-    sessionID: null,
-    taskID: null,
-  });
-  private stateListener: RealtimeStateListener | null = null;
-  private errorListener: RealtimeErrorListener | null = null;
-  private cameraListener: RealtimeCameraPreviewReadyListener | null = null;
   private qualityListener: RealtimeNetworkQualityListener | null = null;
   private performanceListener: RealtimePerformanceAlarmListener | null = null;
   private lifecycle: NativeEventSubscription | null = null;
   private rtcEvents: (() => void) | null = null;
   private volume = 1;
-  private closeOperation: Promise<void> | null = null;
+  private disconnectCleanup: Promise<void> | null = null;
 
   constructor(
     config: Readonly<Required<XmaxConfiguration>>,
@@ -83,7 +73,27 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     this.interaction = new InteractionController((taskID, points) =>
       room.sendTracks(taskID, points),
     );
-    this.render = new RenderController(this, this.rtc, this.interaction);
+    this.coordinator = new RealtimeCoordinator(
+      scope => this.cleanup(scope),
+      () => this.media.stream !== null,
+      () => this.connection.lastSessionID,
+    );
+    this.render = new RenderController(
+      this,
+      this.rtc,
+      this.interaction,
+      binding => {
+        if (
+          binding.valid &&
+          binding === videoBinding(this.media.stream?.videoTrack)
+        )
+          this.coordinator.localPreviewDidBecomeReady();
+      },
+      (binding, error) => {
+        if (binding.valid)
+          this.fail(error, binding.local ? 'all' : 'connection');
+      },
+    );
     this.media = new MediaController(this.rtc, this.render, options.model);
 
     const stream = new StreamController(this.rtc, room);
@@ -107,7 +117,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
   get currentState(): RealtimeState {
-    return this.state;
+    return this.coordinator.currentState;
   }
 
   get localAudioVolume(): number {
@@ -121,20 +131,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   async setStateListener(
     listener: RealtimeStateListener | null,
   ): Promise<void> {
-    this.stateListener = listener;
-    this.notify(() => listener?.(this.state));
-  }
-
-  async setErrorListener(
-    listener: RealtimeErrorListener | null,
-  ): Promise<void> {
-    this.errorListener = listener;
-  }
-
-  async setCameraPreviewReadyListener(
-    listener: RealtimeCameraPreviewReadyListener | null,
-  ): Promise<void> {
-    this.cameraListener = listener;
+    this.coordinator.setStateListener(listener);
   }
 
   async setNetworkQualityListener(
@@ -159,38 +156,27 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     this.volume = volume;
   }
 
-  private run<T>(action: (signal: AbortSignal) => Promise<T>): Promise<T> {
-    if (this.closeOperation)
-      return Promise.reject(invalid('Realtime manager is closing'));
-
-    return this.coordinator.run(action).catch(error => {
-      const failure = XmaxError.from(error);
-      if (failure.code !== XmaxErrorCode.cancelled)
-        XmaxLogger.realtime.error(
-          () => `Realtime operation failed: ${failure.code}`,
-        );
-      throw failure;
-    });
-  }
-
   private validateVolume(value: number): void {
     if (!Number.isFinite(value) || value < 0 || value > 1)
       throw invalid('Audio volume must be between 0 and 1');
   }
 
-  private update(connectionState: RealtimeConnectionState): void {
-    this.state = Object.freeze({
-      connectionState,
-      sessionID: this.connection.session?.id ?? null,
-      taskID:
-        connectionState === RealtimeConnectionState.generating
-          ? this.generation.taskID
-          : null,
-    });
-    XmaxLogger.realtime.info(
-      () => `连接状态 (Connection State)：${connectionState}`,
+  private update(
+    connectionState: RealtimeConnectionState,
+    token: RealtimeOperation,
+  ): void {
+    this.coordinator.commit(
+      {
+        connectionState,
+        sessionID: this.connection.session?.id ?? null,
+        taskID:
+          connectionState === RealtimeConnectionState.generating
+            ? this.generation.taskID
+            : null,
+        reason: null,
+      },
+      token,
     );
-    this.notify(() => this.stateListener?.(this.state));
   }
 
   private notify(deliver: () => void): void {
@@ -204,10 +190,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   private observe(): void {
     if (!this.lifecycle)
       this.lifecycle = AppState.addEventListener('change', state => {
-        if (state === 'background')
-          void this.close().catch(error =>
-            this.notify(() => this.errorListener?.(XmaxError.from(error))),
-          );
+        if (state === 'background') void this.close();
       });
     if (!this.rtcEvents)
       this.rtcEvents = this.rtc.onEvent(event => {
@@ -219,68 +202,60 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         }
         if (
           event.type === 'error' &&
-          [
-            RealtimeConnectionState.connected,
-            RealtimeConnectionState.generating,
-          ].includes(this.state.connectionState)
+          this.currentState.connectionState !== RealtimeConnectionState.idle &&
+          (event.scope === 'all' ||
+            this.currentState.connectionState !==
+              RealtimeConnectionState.disconnecting)
         )
-          this.fail(event.error);
+          this.fail(event.error, event.scope ?? 'connection');
       });
   }
 
-  private fail(error: unknown): void {
+  private fail(error: unknown, scope: TerminationScope = 'connection'): void {
     this.interaction.stopInteraction();
-    XmaxLogger.realtime.error(
-      () => `Realtime failed: ${XmaxError.from(error).code}`,
-    );
-    void this.coordinator
-      .interrupt(async () => {
-        this.update(RealtimeConnectionState.disconnecting);
-        await this.disconnectInternal().catch(() => {});
-        // Commit failure inside the operation gate; an old callback cannot overwrite a new connection.
-        if (this.closeOperation)
-          this.update(RealtimeConnectionState.disconnected);
-        else {
-          this.update(RealtimeConnectionState.error);
-          this.notify(() => this.errorListener?.(XmaxError.from(error)));
-        }
-      })
-      .catch(() => {});
+    void this.coordinator.terminate(scope, {
+      type: 'failure',
+      error: XmaxError.from(error),
+    });
   }
 
   createLocalCameraStream(
     options: CameraStreamOptions = {},
   ): Promise<RealtimeMediaStream> {
-    this.observe();
-
-    return this.run(async signal => {
-      if (this.connection.session)
-        throw invalid('Disconnect before changing the local input');
-
-      const stream = await this.media.createCamera(options, signal);
-
-      await this.setRemoteAudioVolume(0);
-      this.notify(() => this.cameraListener?.());
-
-      return stream;
-    }).catch(error => {
-      throw XmaxError.from(error);
-    });
+    return this.createLocal('camera', token =>
+      this.media.createCamera(options, token.signal),
+    );
   }
 
   createLocalImageStream(
     options: ImageStreamOptions,
   ): Promise<RealtimeMediaStream> {
-    this.observe();
+    return this.createLocal('image', token =>
+      this.media.createImage(options, token.signal),
+    );
+  }
 
-    return this.run(async signal => {
+  private createLocal(
+    source: 'camera' | 'image',
+    prepare: (token: RealtimeOperation) => Promise<RealtimeMediaStream>,
+  ): Promise<RealtimeMediaStream> {
+    return this.coordinator.run('media', async token => {
       if (this.connection.session)
         throw invalid('Disconnect before changing the local input');
-
-      const stream = await this.media.createImage(options, signal);
-
-      await this.setRemoteAudioVolume(1);
-
+      if (this.media.source)
+        throw invalid(
+          'Stop the current local stream before creating another one',
+        );
+      this.observe();
+      this.connection.lastSessionID = null;
+      this.update(RealtimeConnectionState.preparing, token);
+      token.ensureCurrent();
+      const stream = await prepare(token);
+      token.ensureCurrent();
+      token.setFailureScope('all');
+      await this.setRemoteAudioVolume(source === 'camera' ? 0 : 1);
+      token.ensureCurrent();
+      if (source === 'image') this.update(RealtimeConnectionState.ready, token);
       return stream;
     });
   }
@@ -290,37 +265,30 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }: {
     localStream: RealtimeMediaStream;
   }): Promise<RealtimeMediaStream> {
-    return this.run(signal => this.connectInternal(localStream, signal));
+    return this.coordinator.run('connection', token =>
+      this.connectInternal(localStream, token),
+    );
   }
 
   private async connectInternal(
     localStream: RealtimeMediaStream,
-    signal: AbortSignal,
+    token: RealtimeOperation,
   ): Promise<RealtimeMediaStream> {
     const binding = this.render.requireLocal(localStream);
-
     if (this.connection.remoteStream) return this.connection.remoteStream;
-
-    this.update(RealtimeConnectionState.connecting);
-
-    try {
-      const stream = await this.connection.connect(
-        this.options.model,
-        binding.format,
-        this.media.useMicrophone,
-        signal,
-        error => this.fail(error),
-      );
-
-      ensureActive(signal);
-      this.update(RealtimeConnectionState.connected);
-
-      return stream;
-    } catch (error) {
-      if (!signal.aborted) this.update(RealtimeConnectionState.error);
-
-      throw XmaxError.from(error);
-    }
+    token.setFailureScope('connection');
+    this.connection.lastSessionID = null;
+    this.update(RealtimeConnectionState.connecting, token);
+    token.ensureCurrent();
+    const stream = await this.connection.connect(
+      this.options.model,
+      binding.format,
+      this.media.useMicrophone,
+      token.signal,
+      error => this.fail(error),
+    );
+    this.update(RealtimeConnectionState.connected, token);
+    return stream;
   }
 
   startGeneration(options: {
@@ -338,12 +306,14 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       context?: RealtimeContext | null;
     } = {},
   ): Promise<RealtimeMediaStream | void> {
-    return this.run(async signal => {
+    return this.coordinator.run('generation', async token => {
+      const { signal } = token;
       const local = options.localStream ?? this.media.stream;
 
       if (!local) throw invalid('Create a local media stream first');
 
       this.render.requireLocal(local);
+      this.generation.validateContext(options.context);
 
       let remoteStream = this.connection.remoteStream;
 
@@ -353,23 +323,82 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
             'Connect before starting generation without a localStream',
           );
 
-        remoteStream = await this.connectInternal(local, signal);
+        remoteStream = await this.connectInternal(local, token);
       }
 
       const updating =
-        this.state.connectionState === RealtimeConnectionState.generating;
+        this.currentState.connectionState ===
+        RealtimeConnectionState.generating;
 
-      try {
-        const format = this.render.requireLocal(local).format;
-        const remote = await this.generation.start(
-          format,
-          options.context,
+      if (!updating) token.setFailureScope('connection');
+      const format = this.render.requireLocal(local).format;
+      const remote = await this.generation.start(
+        format,
+        options.context,
+        signal,
+      );
+
+      ensureActive(signal);
+      if (remote && remoteStream.videoTrack) {
+        const binding = videoBinding(remoteStream.videoTrack);
+
+        if (binding) {
+          binding.remote = remote;
+          binding.confirmed = true;
+          refreshBinding(binding);
+        }
+      }
+
+      this.update(RealtimeConnectionState.generating, token);
+      if (options.localStream) return remoteStream;
+    });
+  }
+
+  switchCamera(): Promise<RealtimeMediaStream> {
+    return this.coordinator.run('cameraSwitch', async token => {
+      const { signal } = token;
+      if (this.media.source !== 'camera')
+        throw invalid('Create a local camera stream first');
+      const generating = this.generation.taskID !== null;
+      if (generating) token.setFailureScope('connection');
+
+      if (generating) {
+        const binding = videoBinding(this.connection.remoteStream?.videoTrack);
+
+        if (binding) {
+          binding.confirmed = false;
+          refreshBinding(binding);
+        }
+
+        this.generation.stop();
+        this.update(RealtimeConnectionState.connected, token);
+      }
+
+      const local = await this.media.switchCamera(signal);
+
+      ensureActive(signal);
+      if (generating) {
+        // Match iOS: let the new camera settle before starting a fresh task.
+        await waitFor<void>(
+          resolve => {
+            const timer = setTimeout(resolve, 500);
+
+            return () => clearTimeout(timer);
+          },
           signal,
+          1000,
+          'Camera switch',
         );
 
-        ensureActive(signal);
-        if (remote && remoteStream.videoTrack) {
-          const binding = videoBinding(remoteStream.videoTrack);
+        const remote = await this.generation.start(
+          this.render.requireLocal(local).format,
+          null,
+          signal,
+        );
+        const track = this.connection.remoteStream?.videoTrack;
+
+        if (remote && track) {
+          const binding = videoBinding(track);
 
           if (binding) {
             binding.remote = remote;
@@ -378,120 +407,34 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
           }
         }
 
-        this.update(RealtimeConnectionState.generating);
-        if (options.localStream) return remoteStream;
-      } catch (error) {
-        if (updating && !signal.aborted) {
-          const failure = XmaxError.from(error);
-
-          throw new XmaxError({
-            code: failure.code,
-            message: failure.message,
-            severity: XmaxErrorSeverity.recoverable,
-            apiCode: failure.apiCode,
-            httpStatus: failure.httpStatus,
-          });
-        }
-        if (!signal.aborted) {
-          await this.disconnectInternal().catch(() => {});
-          this.update(RealtimeConnectionState.error);
-        }
-
-        throw XmaxError.from(error);
-      }
-    });
-  }
-
-  switchCamera(): Promise<RealtimeMediaStream> {
-    return this.run(async signal => {
-      if (this.media.source !== 'camera')
-        throw invalid('Create a local camera stream first');
-      try {
-        const generating = this.generation.taskID !== null;
-
-        if (generating) {
-          const binding = videoBinding(
-            this.connection.remoteStream?.videoTrack,
-          );
-
-          if (binding) {
-            binding.confirmed = false;
-            refreshBinding(binding);
-          }
-
-          this.generation.stop();
-          this.update(RealtimeConnectionState.connected);
-        }
-
-        const local = await this.media.switchCamera(signal);
-
         ensureActive(signal);
-        if (generating) {
-          // Match iOS: let the new camera settle before starting a fresh task.
-          await waitFor<void>(
-            resolve => {
-              const timer = setTimeout(resolve, 500);
-
-              return () => clearTimeout(timer);
-            },
-            signal,
-            1000,
-            'Camera switch',
-          );
-
-          const remote = await this.generation.start(
-            this.render.requireLocal(local).format,
-            null,
-            signal,
-          );
-          const track = this.connection.remoteStream?.videoTrack;
-
-          if (remote && track) {
-            const binding = videoBinding(track);
-
-            if (binding) {
-              binding.remote = remote;
-              binding.confirmed = true;
-              refreshBinding(binding);
-            }
-          }
-
-          ensureActive(signal);
-          this.update(RealtimeConnectionState.generating);
-        }
-
-        return local;
-      } catch (error) {
-        if (!signal.aborted) {
-          await this.disconnectInternal().catch(() => {});
-          this.update(RealtimeConnectionState.error);
-        }
-
-        throw error;
+        this.update(RealtimeConnectionState.generating, token);
       }
+
+      return local;
     });
   }
 
-  private async disconnectInternal(): Promise<void> {
-    await this.render.hideRemote();
-    try {
-      this.generation.reset();
-    } finally {
-      await this.connection.disconnect();
-    }
-  }
-
-  disconnect(): Promise<void> {
-    this.interaction.stopInteraction();
-    return this.coordinator.interrupt(async () => {
-      this.update(RealtimeConnectionState.disconnecting);
-
+  /** Coalesces connection cleanup when a concurrent close expands its scope. */
+  private disconnectInternal(): Promise<void> {
+    if (this.disconnectCleanup) return this.disconnectCleanup;
+    const cleanup = (async () => {
+      await this.render.hideRemote();
       try {
-        await this.disconnectInternal();
+        this.generation.reset();
       } finally {
-        this.update(RealtimeConnectionState.disconnected);
+        await this.connection.disconnect();
       }
+    })();
+    const completion = cleanup.finally(() => {
+      if (this.disconnectCleanup === completion) this.disconnectCleanup = null;
     });
+    this.disconnectCleanup = completion;
+    return completion;
+  }
+
+  disconnect(options?: { reason?: RealtimeReason }): Promise<void> {
+    return this.coordinator.disconnect(options?.reason);
   }
 
   stopLocalCameraStream(): Promise<void> {
@@ -503,47 +446,50 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
   private stopLocal(source: 'camera' | 'image'): Promise<void> {
-    return this.run(async () => {
+    return this.coordinator.run('media', async token => {
       if (this.connection.session)
         throw invalid('Disconnect before stopping the local input');
 
+      token.setFailureScope('all');
       await this.media.stop(source);
+      this.update(
+        this.media.stream
+          ? RealtimeConnectionState.ready
+          : RealtimeConnectionState.idle,
+        token,
+      );
     });
   }
 
   close(): Promise<void> {
-    if (this.closeOperation) return this.closeOperation;
+    return this.coordinator.terminate('all');
+  }
 
-    const operation = (async () => {
-      // Send stop before detaching the room. Release local capture immediately, including while POST settles.
-      try {
-        this.generation.reset();
-      } catch {
-        /* Connection cleanup still owns server deletion. */
-      }
-
-      const disconnecting = this.disconnect();
-      const mediaClose = this.media.close();
-
-      try {
-        const outcomes = await Promise.allSettled([disconnecting, mediaClose]);
-        const failure = outcomes.find(result => result.status === 'rejected');
-
-        if (failure?.status === 'rejected')
-          throw XmaxError.from(failure.reason);
-      } finally {
-        this.render.invalidate();
-        this.lifecycle?.remove();
-        this.lifecycle = null;
-        this.rtcEvents?.();
-        this.rtcEvents = null;
-      }
-    })();
-
-    this.closeOperation = operation;
-
-    return operation.finally(() => {
-      if (this.closeOperation === operation) this.closeOperation = null;
-    });
+  /** Releases capture immediately while a cancelled session allocation settles. */
+  private async cleanup(scope: TerminationScope): Promise<void> {
+    if (scope === 'connection') return this.disconnectInternal();
+    // Stop signalling after the remote layer is hidden, before closing the shared RTC engine.
+    let stopFailure: unknown;
+    try {
+      await this.render.hideRemote();
+      this.generation.reset();
+    } catch (error) {
+      stopFailure = error;
+    }
+    try {
+      const results = await Promise.allSettled([
+        this.disconnectInternal(),
+        this.media.close(),
+      ]);
+      const failure = results.find(result => result.status === 'rejected');
+      if (failure?.status === 'rejected') throw failure.reason;
+      if (stopFailure) throw stopFailure;
+    } finally {
+      this.render.invalidate();
+      this.lifecycle?.remove();
+      this.lifecycle = null;
+      this.rtcEvents?.();
+      this.rtcEvents = null;
+    }
   }
 }

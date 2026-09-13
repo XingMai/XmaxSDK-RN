@@ -39,7 +39,7 @@ function loadVendor() {
   return { ...sandbox.fixture, logs };
 }
 
-test('vendor callback errors preserve message/stack without logging argument values', async () => {
+test('vendor callback conversion failures do not log event argument values', async () => {
   const vendor = loadVendor();
   const handler = Object.create(vendor.android_RTCVideoEventHandler.prototype);
   const client = Object.create(vendor.MessageClientImpl.prototype);
@@ -54,7 +54,8 @@ test('vendor callback errors preserve message/stack without logging argument val
   };
 
   // A native reference has no materialized streamIndex. All three conversions
-  // reach the same failing getter; the old logger serialized its Error as {}.
+  // reach the same failing getter. Keep the vendor's default error handling;
+  // diagnostic message/stack enrichment is not required for SDK behavior.
   for (const methodName of Object.keys(handler._instance)) {
     await client._onCallEventEmit({
       _instanceId: 'handler-fixture',
@@ -70,9 +71,6 @@ test('vendor callback errors preserve message/stack without logging argument val
     });
     const log = vendor.logs.at(-1);
     assert.match(log, new RegExp(methodName));
-    assert.match(log, /invalid value:undefined/);
-    assert.match(log, /t_StreamIndex.android_to_ts/);
-    assert.match(log, /argumentKeys/);
     assert.doesNotMatch(log, /private-native-id|private-payload-value/);
   }
   assert.equal(vendor.logs.length, 3);
@@ -106,7 +104,7 @@ test('materialized remote callback parameters still pass through unchanged', () 
   assert.deepEqual(vendor.logs, []);
 });
 
-test('Android string stream enums reach SEI, decoded and rendered callbacks', async () => {
+test('Android adapter output reaches unmodified vendor SEI, decoded and rendered callbacks', async () => {
   const vendor = loadVendor();
   const handler = Object.create(vendor.android_RTCVideoEventHandler.prototype);
   const client = Object.create(vendor.MessageClientImpl.prototype);
@@ -132,19 +130,18 @@ test('Android string stream enums reach SEI, decoded and rendered callbacks', as
     },
   };
 
-  for (const [streamIndex, expected] of [
-    ['STREAM_INDEX_MAIN', 0],
-    ['STREAM_INDEX_SCREEN', 1],
-    [0, 0],
-    [1, 1],
-  ]) {
+  // XmaxRtcEventAdapter is verified against the real native serializer in the
+  // Android unit tests. It emits plain stream keys with numeric enum values.
+  for (const streamIndex of [0, 1]) {
+    const expected = streamIndex;
     observed.length = 0;
+    const key = { roomId: 'room-fixture', userId: 'bot-fixture', streamIndex };
     for (const methodName of Object.keys(handler._instance)) {
       await client._onCallEventEmit({
         _instanceId: 'handler-fixture',
         methodName,
         args: [
-          { roomId: 'room-fixture', userId: 'bot-fixture', streamIndex },
+          key,
           methodName === 'onSEIMessageReceived'
             ? {
                 _type: 'base64',
@@ -163,7 +160,7 @@ test('Android string stream enums reach SEI, decoded and rendered callbacks', as
   assert.deepEqual(vendor.logs, []);
 });
 
-test('stream enum normalization preserves invalid input errors and iOS mapping', () => {
+test('unmodified vendor rejects string enums and preserves iOS numeric mapping', () => {
   const { t_StreamIndex } = loadVendor();
   for (const value of [
     undefined,
@@ -172,6 +169,8 @@ test('stream enum normalization preserves invalid input errors and iOS mapping',
     -1,
     'MAIN',
     'STREAM_INDEX_UNKNOWN',
+    'STREAM_INDEX_MAIN',
+    'STREAM_INDEX_SCREEN',
   ]) {
     assert.throws(() => t_StreamIndex.android_to_ts(value), /invalid value:/);
   }

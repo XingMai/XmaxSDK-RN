@@ -1,7 +1,7 @@
 import {
   DefaultTrajectoryEffectRenderer,
   type TrajectoryID,
-} from '@xmax/react-native-sdk';
+} from '@xmaxai/react-native-sdk';
 
 /** Same touch effects as the SDK, with alternating pink/blue fingers like iOS XLab. */
 export class XLabTrajectoryRenderer extends DefaultTrajectoryEffectRenderer {

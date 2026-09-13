@@ -21,14 +21,6 @@ export enum XmaxErrorCode {
 }
 
 /**
- * Whether an error is classified as recoverable or fatal to its operation.
- */
-export enum XmaxErrorSeverity {
-  recoverable = 'RECOVERABLE',
-  fatal = 'FATAL',
-}
-
-/**
  * An SDK failure with a stable code and optional API/HTTP metadata.
  *
  * Native or unknown failures can be normalized with XmaxError.from().
@@ -40,11 +32,6 @@ export class XmaxError extends Error {
    * The stable SDK error identifier.
    */
   readonly code: XmaxErrorCode;
-
-  /**
-   * The failure classification, inferred from code unless explicitly provided.
-   */
-  readonly severity: XmaxErrorSeverity;
 
   /**
    * The service response code, or null when unavailable.
@@ -59,23 +46,11 @@ export class XmaxError extends Error {
   constructor(options: {
     code: XmaxErrorCode;
     message: string;
-    severity?: XmaxErrorSeverity;
     apiCode?: number | null;
     httpStatus?: number | null;
   }) {
     super(options.message);
     this.code = options.code;
-    this.severity =
-      options.severity ??
-      ([
-        XmaxErrorCode.invalidAPIKey,
-        XmaxErrorCode.invalidConfiguration,
-        XmaxErrorCode.cameraPermissionDenied,
-        XmaxErrorCode.microphonePermissionDenied,
-        XmaxErrorCode.cancelled,
-      ].includes(options.code)
-        ? XmaxErrorSeverity.recoverable
-        : XmaxErrorSeverity.fatal);
     this.apiCode = options.apiCode ?? null;
     this.httpStatus = options.httpStatus ?? null;
   }

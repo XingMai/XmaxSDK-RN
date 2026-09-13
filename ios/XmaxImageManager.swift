@@ -69,9 +69,9 @@ final class XmaxImageManager: @unchecked Sendable {
   func prepare(_ fileURL: String, width: Double, height: Double, promise: XmaxNativePromise) {
     DispatchQueue.global(qos: .userInitiated).async {
       autoreleasepool {
+        // Model buckets and pixel bounds are resolved by MediaService before preparation.
         guard width.isFinite, height.isFinite, width > 0, height > 0,
-          width.rounded(.down) == width, height.rounded(.down) == height,
-          width * height <= 1_280_000
+          width.rounded(.down) == width, height.rounded(.down) == height
         else {
           promise.reject("Invalid prepared image dimensions")
           return

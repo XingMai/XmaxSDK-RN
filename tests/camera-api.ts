@@ -64,7 +64,9 @@ export async function cameraContract(client: XmaxClient) {
   };
   await manager.setStateListener(() => {});
   await manager.setStateListener(null);
+  // @ts-expect-error Errors are delivered by state.reason or rejected operations.
   await manager.setErrorListener(null);
+  // @ts-expect-error Preview readiness is represented by Ready.
   await manager.setCameraPreviewReadyListener(null);
   await manager.setNetworkQualityListener(null);
   await manager.setPerformanceAlarmListener(null);
@@ -108,3 +110,22 @@ export async function cameraContract(client: XmaxClient) {
     wrongReturn,
   };
 }
+
+// @ts-expect-error Severity is no longer part of the public error interface.
+import type { XmaxErrorSeverity } from '../src';
+// @ts-expect-error Separate error listeners were removed.
+import type { RealtimeErrorListener } from '../src';
+// @ts-expect-error Preview readiness uses the state listener.
+import type { RealtimeCameraPreviewReadyListener } from '../src';
+
+async function stateErrors(manager: import('../src').XmaxRealtimeManaging) {
+  await manager.setStateListener(state => {
+    if (state.reason?.type === 'failure') {
+      const error: import('../src').XmaxError = state.reason.error;
+      // @ts-expect-error Errors no longer expose severity.
+      error.severity;
+    }
+  });
+  await manager.disconnect({ reason: { type: 'orientationChanged' } });
+}
+void stateErrors;

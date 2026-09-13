@@ -203,22 +203,18 @@ test('both platforms use suffix-free task IDs for every command and SEI confirma
 });
 
 test('interrupt cancels confirmation promptly, cleanup runs once, operation gate reopens', async () => {
-  const coordinator = new RealtimeCoordinator();
   let cleaned = 0;
-  const pending = coordinator.run(signal =>
+  const coordinator = new RealtimeCoordinator(async () => { cleaned++; }, () => false);
+  const pending = coordinator.run('generation', ({ signal }) =>
     waitFor(() => () => {}, signal, 10000, 'confirmation'),
   );
   const rejection = assert.rejects(pending, { code: 'CANCELLED' });
   await nextTurn();
-  const one = coordinator.interrupt(async () => {
-      cleaned++;
-    }),
-    two = coordinator.interrupt(async () => {
-      cleaned++;
-    });
+  const one = coordinator.terminate('all'),
+    two = coordinator.terminate('all');
   await Promise.all([one, two, rejection]);
   assert.equal(cleaned, 1);
-  assert.equal(await coordinator.run(async () => 7), 7);
+  assert.equal(await coordinator.run('media', async () => 7), 7);
 });
 
 test('permission wait is cancellable without waiting for system dialog', async () => {
@@ -541,7 +537,7 @@ test('close during POST stops camera immediately and reclaims late session; mana
   assert.deepEqual(calls, ['POST', 'DELETE']);
   assert.equal(rtc.joins, 0);
   assert.equal(local.videoTrack.videoFormat, null);
-  assert.equal(manager.currentState.connectionState, 'Disconnected');
+  assert.equal(manager.currentState.connectionState, 'Idle');
   const replacement = await manager.createLocalCameraStream();
   assert.notEqual(replacement.videoTrack, local.videoTrack);
   await assert.rejects(manager.connect({ localStream: local }), {
@@ -600,7 +596,7 @@ test('XLab replacement queue serializes real SDK cancellation, late session clea
   assert.equal(change.uid, packet.uid);
   await queue.cancel();
   assert.equal(rtc.camera, true);
-  assert.equal(manager.currentState.connectionState, 'Disconnected');
+  assert.equal(manager.currentState.connectionState, 'Ready');
 });
 
 test('generation requires task + room + bot SEI, updates reuse task, disconnect preserves camera', async t => {
@@ -666,7 +662,7 @@ test('generation requires task + room + bot SEI, updates reuse task, disconnect 
   assert.equal(rtc.camera, true);
   assert.equal(remote.videoTrack.videoFormat, null);
   emit(id);
-  assert.equal(manager.currentState.connectionState, 'Disconnected');
+  assert.equal(manager.currentState.connectionState, 'Ready');
   await manager.close();
   assert.equal(lifecycleListeners.size, 0);
 });
@@ -684,7 +680,10 @@ test('close cancels generation wait and still releases camera when DELETE fails'
   const pending = manager.startGeneration({ context: { prompt: '水彩' } });
   const rejection = assert.rejects(pending, { code: 'CANCELLED' });
   await nextTurn();
-  await assert.rejects(manager.close(), { code: 'API_ERROR' });
+  await manager.close();
+  assert.equal(manager.currentState.connectionState, 'Idle');
+  assert.equal(manager.currentState.reason.type, 'failure');
+  assert.equal(manager.currentState.reason.error.code, 'API_ERROR');
   await rejection;
   assert.equal(rtc.camera, false);
   assert.equal(local.videoTrack.videoFormat, null);
@@ -719,7 +718,7 @@ test('failed condition update retains task and cached prompt, switch failure rel
   });
   await assert.rejects(
     manager.startGeneration({ context: { prompt: 'failed' } }),
-    { code: 'RTC_ERROR', severity: 'RECOVERABLE' },
+    { code: 'RTC_ERROR' },
   );
   assert.equal(manager.currentState.taskID, id);
   assert.equal(manager.currentState.connectionState, 'Generating');
@@ -741,7 +740,7 @@ test('failed condition update retains task and cached prompt, switch failure rel
     });
   });
   await assert.rejects(manager.switchCamera(), { code: 'MEDIA_ERROR' });
-  assert.equal(manager.currentState.connectionState, 'Error');
+  assert.equal(manager.currentState.connectionState, 'Ready');
   assert.equal(remote.videoTrack.videoFormat, null);
   assert.equal(rtc.camera, true);
   assert.notEqual(local.videoTrack.videoFormat, null);
@@ -766,7 +765,7 @@ test('background closes resources, inactive does not, throwing app listeners can
   await manager.close();
   assert.equal(rtc.camera, false);
   assert.equal(local.videoTrack.videoFormat, null);
-  assert.equal(manager.currentState.connectionState, 'Disconnected');
+  assert.equal(manager.currentState.connectionState, 'Idle');
   assert.equal(lifecycleListeners.size, 0);
 });
 
@@ -817,7 +816,7 @@ test('close invalidates a camera switch while its native mirror request is pendi
   assert.equal(local.videoTrack.position, null);
   gate.resolve();
   await Promise.all([closing, rejected]);
-  assert.equal(manager.currentState.connectionState, 'Disconnected');
+  assert.equal(manager.currentState.connectionState, 'Idle');
 });
 
 
@@ -944,3 +943,253 @@ test('disconnect waits for native overlay hiding before stop signal and room rel
     assert.equal(rtc.camera, true);
   } finally { hidden.resolve(); await disconnecting; await manager.close(); }
 });
+
+const { videoBinding } = require('../lib/commonjs/Render/RenderController');
+const { VideoSurfaceBinding } = require('../lib/commonjs/Render/Video/VideoSurfaceBinding');
+
+function bindPreview(manager, stream) {
+  const rtc = FakeRtc.instances.at(-1);
+  rtc.bind = () => {};
+  rtc.unbind = () => {};
+  const surface = new VideoSurfaceBinding(videoBinding(stream.videoTrack), 'preview', null, () => {});
+  surface.start('fill');
+  return surface;
+}
+
+test('camera readiness waits for capture and preview binding; retired previews cannot ready new media', async t => {
+  const manager = createManager(), states = [], frame = defer();
+  t.after(() => manager.close());
+  const rtc = FakeRtc.instances.at(-1);
+  const start = rtc.startCamera.bind(rtc);
+  t.mock.method(rtc, 'startCamera', async () => { await frame.promise; await start(); });
+  await manager.setStateListener(state => states.push(state.connectionState));
+  const preparing = manager.createLocalCameraStream();
+  await nextTurn();
+  assert.equal(manager.currentState.connectionState, 'Preparing');
+  frame.resolve();
+  const local = await preparing;
+  assert.equal(manager.currentState.connectionState, 'Preparing');
+  const oldBinding = videoBinding(local.videoTrack);
+  const surface = bindPreview(manager, local);
+  assert.equal(manager.currentState.connectionState, 'Ready');
+  surface.setContentMode('fit');
+  assert.deepEqual(states, ['Idle', 'Preparing', 'Ready']);
+  surface.dispose();
+  await manager.stopLocalCameraStream();
+  assert.equal(manager.currentState.connectionState, 'Idle');
+  const replacement = await manager.createLocalCameraStream();
+  oldBinding.onPreviewReady();
+  assert.equal(manager.currentState.connectionState, 'Preparing');
+  bindPreview(manager, replacement).dispose();
+  assert.equal(manager.currentState.connectionState, 'Ready');
+});
+
+test('disconnect during media preparation is a no-op; overlapping operations reject without cancelling preparation', async t => {
+  const manager = createManager(), permission = defer();
+  t.after(() => manager.close());
+  t.mock.method(FakeRtc.instances.at(-1), 'permissions', () => permission.promise);
+  const preparing = manager.createLocalCameraStream();
+  await nextTurn();
+  await manager.disconnect();
+  await assert.rejects(manager.createLocalCameraStream(), { code: 'INVALID_CONFIGURATION' });
+  assert.equal(manager.currentState.connectionState, 'Preparing');
+  assert.equal(manager.currentState.reason, null);
+  permission.resolve();
+  const local = await preparing;
+  bindPreview(manager, local).dispose();
+  assert.equal(manager.currentState.connectionState, 'Ready');
+});
+
+test('image preparation becomes Ready without a canvas; validation rejects without a failure termination', async t => {
+  const manager = createManager(), states = [];
+  t.after(() => manager.close());
+  await manager.setStateListener(state => states.push(state.connectionState));
+  await assert.rejects(manager.createLocalCameraStream({ videoFormat: { width: 0, height: 0, fps: 0 } }), { code: 'INVALID_CONFIGURATION' });
+  assert.deepEqual(states, ['Idle', 'Preparing', 'Idle']);
+  assert.equal(manager.currentState.reason, null);
+  await manager.createLocalImageStream({ fileURL: 'file:///photo.jpg' });
+  assert.equal(manager.currentState.connectionState, 'Ready');
+  await assert.rejects(manager.startGeneration(), { code: 'INVALID_CONFIGURATION' });
+  assert.equal(manager.currentState.connectionState, 'Ready');
+  assert.equal(manager.currentState.reason, null);
+  await manager.stopLocalImageStream();
+  assert.equal(manager.currentState.connectionState, 'Idle');
+});
+
+test('connection failure retains local preview and session identity; reconnect clears the failure reason', async t => {
+  t.mock.method(globalThis, 'fetch', async (_url, init) => response(init.method === 'POST' ? sessionPayload : {}));
+  const manager = createManager(), states = [];
+  t.after(() => manager.close());
+  const local = await manager.createLocalCameraStream(), rtc = FakeRtc.instances.at(-1);
+  await manager.setStateListener(state => states.push(state));
+  const failure = new XmaxError({ code: XmaxErrorCode.rtcError, message: 'join rejected' });
+  const join = t.mock.method(rtc, 'join', async () => { throw failure; });
+  await assert.rejects(manager.connect({ localStream: local }), failure);
+  assert.equal(manager.currentState.connectionState, 'Ready');
+  assert.equal(manager.currentState.sessionID, 'session-1');
+  assert.equal(manager.currentState.reason.error, failure);
+  assert.equal(rtc.camera, true);
+  join.mock.restore();
+  await manager.connect({ localStream: local });
+  assert.equal(manager.currentState.reason, null);
+  assert.equal(states.filter(state => state.connectionState === 'Connecting').at(-1).sessionID, null);
+  await manager.disconnect({ reason: { type: 'orientationChanged' } });
+  assert.deepEqual(manager.currentState, { connectionState: 'Ready', sessionID: 'session-1', taskID: null, reason: { type: 'orientationChanged' } });
+  await manager.close();
+  assert.deepEqual(manager.currentState, { connectionState: 'Idle', sessionID: 'session-1', taskID: null, reason: { type: 'normal' } });
+});
+
+test('background room failures end in Ready; engine failures end in Idle with failure reason', async t => {
+  t.mock.method(globalThis, 'fetch', async (_url, init) => response(init.method === 'POST' ? sessionPayload : {}));
+  const manager = createManager();
+  t.after(() => manager.close());
+  const local = await manager.createLocalCameraStream(), rtc = FakeRtc.instances.at(-1);
+  await manager.connect({ localStream: local });
+  const failure = new XmaxError({ code: XmaxErrorCode.rtcError, message: 'connection lost' });
+  rtc.emit({ type: 'error', error: failure });
+  await nextTurn();
+  assert.equal(manager.currentState.connectionState, 'Ready');
+  assert.equal(manager.currentState.reason.error, failure);
+  assert.equal(rtc.camera, true);
+  rtc.emit({ type: 'error', scope: 'all', error: failure });
+  await nextTurn();
+  assert.equal(manager.currentState.connectionState, 'Idle');
+  assert.equal(manager.currentState.reason.error, failure);
+  assert.equal(rtc.camera, false);
+});
+
+test('preview bind failure terminates local media through the state error interface', async t => {
+  const manager = createManager();
+  t.after(() => manager.close());
+  const local = await manager.createLocalCameraStream(), rtc = FakeRtc.instances.at(-1);
+  const failure = new XmaxError({ code: XmaxErrorCode.rtcError, message: 'bind failed' });
+  rtc.bind = () => { throw failure; };
+  rtc.unbind = () => {};
+  const surface = new VideoSurfaceBinding(videoBinding(local.videoTrack), 'preview', null, () => {});
+  surface.start('fill');
+  await nextTurn();
+  assert.equal(manager.currentState.connectionState, 'Idle');
+  assert.equal(manager.currentState.reason.error, failure);
+  assert.equal(rtc.camera, false);
+  surface.dispose();
+});
+
+test('disconnect expanded to close joins one session cleanup and ignores late room errors', async t => {
+  const deleted = defer();
+  let deletes = 0;
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    if (init.method === 'POST') return response(sessionPayload);
+    deletes++;
+    return deleted.promise;
+  });
+  const manager = createManager(), local = await manager.createLocalCameraStream();
+  const rtc = FakeRtc.instances.at(-1);
+  await manager.connect({ localStream: local });
+  const disconnect = manager.disconnect();
+  await nextTurn();
+  const close = manager.close();
+  await nextTurn();
+  rtc.emit({ type: 'error', error: new XmaxError({ code: XmaxErrorCode.rtcError, message: 'late' }) });
+  assert.equal(rtc.camera, false);
+  assert.equal(manager.currentState.connectionState, 'Disconnecting');
+  deleted.resolve(response({}));
+  await Promise.all([disconnect, close]);
+  assert.equal(deletes, 1);
+  assert.deepEqual(manager.currentState, { connectionState: 'Idle', sessionID: 'session-1', taskID: null, reason: { type: 'normal' } });
+});
+
+test('terminal listener can create new media while the cancelled allocation unwinds', async t => {
+  const post = defer();
+  t.mock.method(globalThis, 'fetch', async (_url, init) => init.method === 'POST' ? post.promise : response({}));
+  const manager = createManager(), local = await manager.createLocalCameraStream();
+  t.after(() => manager.close());
+  let replacement;
+  await manager.setStateListener(state => {
+    if (state.connectionState === 'Idle' && state.reason && !replacement)
+      replacement = manager.createLocalImageStream({ fileURL: 'file:///new.jpg' });
+  });
+  const connecting = manager.connect({ localStream: local });
+  const rejection = assert.rejects(connecting, { code: 'CANCELLED' });
+  await nextTurn();
+  const closing = manager.close();
+  post.resolve(response(sessionPayload));
+  await Promise.all([closing, rejection]);
+  const next = await replacement;
+  assert.ok(next.videoTrack.videoFormat);
+  assert.equal(manager.currentState.connectionState, 'Ready');
+  assert.equal(manager.currentState.reason, null);
+  assert.equal(manager.currentState.sessionID, null);
+  await manager.setStateListener(null);
+});
+
+test('engine failure during generation rejects the pending call with the terminal error and closes local media', async t => {
+  t.mock.method(globalThis, 'fetch', async (_url, init) => response(init.method === 'POST' ? sessionPayload : {}));
+  const manager = createManager(), local = await manager.createLocalCameraStream();
+  t.after(() => manager.close());
+  const pending = manager.startGeneration({ localStream: local, context: { prompt: 'test' } });
+  const failure = new XmaxError({ code: XmaxErrorCode.rtcError, message: 'engine stopped' });
+  const rejected = assert.rejects(pending, error => error === failure);
+  await nextTurn();
+  const rtc = FakeRtc.instances.at(-1);
+  rtc.emit({ type: 'error', scope: 'all', error: failure });
+  await rejected;
+  assert.equal(manager.currentState.connectionState, 'Idle');
+  assert.equal(manager.currentState.reason.error, failure);
+  assert.equal(manager.currentState.sessionID, 'session-1');
+  assert.equal(manager.currentState.taskID, null);
+  assert.equal(rtc.camera, false);
+});
+
+test('normal close hides remote and sends stop before destroying the shared RTC engine', async t => {
+  t.mock.method(globalThis, 'fetch', async (_url, init) => response(init.method === 'POST' ? sessionPayload : {}));
+  const manager = createManager(), local = await manager.createLocalCameraStream();
+  const remote = await manager.connect({ localStream: local }), rtc = FakeRtc.instances.at(-1);
+  const pending = manager.startGeneration({ context: { prompt: 'test' } });
+  await nextTurn();
+  const id = rtc.packets.find(packet => packet.event === 'start').uid;
+  rtc.emit({ type: 'sei', stream: { roomID: 'room-1', userID: 'bot-1' }, message: id });
+  await pending;
+  const hidden = defer(), order = [];
+  videoBinding(remote.videoTrack).hideBeforeRelease.add(async () => { await hidden.promise; order.push('hidden'); });
+  const send = rtc.send.bind(rtc), close = rtc.close.bind(rtc);
+  t.mock.method(rtc, 'send', message => {
+    assert.equal(rtc.closed, false, 'No signalling after engine destruction');
+    if (JSON.parse(message).event === 'stop') order.push('stop');
+    send(message);
+  });
+  t.mock.method(rtc, 'close', async () => { order.push('close'); await close(); });
+  const closing = manager.close();
+  await nextTurn();
+  assert.deepEqual(order, []);
+  hidden.resolve();
+  await closing;
+  assert.deepEqual(order, ['hidden', 'stop', 'close']);
+  assert.deepEqual(manager.currentState.reason, { type: 'normal' });
+});
+
+for (const size of [{ width: 1024, height: 1920 }, { width: 1920, height: 1024 }]) {
+  test(`Pro image input preserves its ${size.width}x${size.height} bucket through preparation and RTC`, async t => {
+    const manager = new XmaxRealtimeManager(config, { model: 'x2.0-pro' });
+    t.after(() => manager.close());
+    const images = FakeImages.instances.at(-1), rtc = FakeRtc.instances.at(-1);
+    const format = { ...size, fps: 30 };
+    t.mock.method(images, 'size', async () => size);
+    const start = t.mock.method(rtc, 'startImage', () => {});
+    // Native image dimensions are used when videoFormat is omitted.
+    const local = await manager.createLocalImageStream({ fileURL: 'file:///pro.jpg' });
+    assert.deepEqual(images.prepared, [format]);
+    assert.deepEqual(start.mock.calls[0].arguments[1], format);
+    assert.deepEqual(local.videoTrack.videoFormat, format);
+    assert.equal(manager.currentState.connectionState, 'Ready');
+    await manager.stopLocalImageStream();
+    // An explicit supported bucket can also be used to crop a differently sized source.
+    t.mock.method(images, 'size', async () => ({ width: 800, height: 600 }));
+    const cropped = await manager.createLocalImageStream({ fileURL: 'file:///photo.jpg', videoFormat: format });
+    assert.deepEqual(cropped.videoTrack.videoFormat, format);
+    assert.deepEqual(images.prepared.at(-1), format);
+    await manager.stopLocalImageStream();
+    const preparations = images.prepared.length;
+    await assert.rejects(manager.createLocalImageStream({ fileURL: 'file:///photo.jpg' }), { code: 'INVALID_CONFIGURATION' });
+    assert.equal(images.prepared.length, preparations, 'Unsupported dimensions must fail at model validation, before native preparation');
+  });
+}

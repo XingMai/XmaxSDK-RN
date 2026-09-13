@@ -49,8 +49,10 @@ export class VideoSurfaceBinding {
     try {
       this.record.rtc.bind(this.viewID, this.stream, mode);
       this.mode = mode;
+      if (this.record.valid) this.record.onPreviewReady?.();
       this.refresh();
-    } catch {
+    } catch (error) {
+      this.record.onBindingFailure?.(error);
       XmaxLogger.render.error('Video canvas binding failed');
       this.mode = null;
       this.refresh();

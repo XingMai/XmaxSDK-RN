@@ -17,6 +17,8 @@ export interface VideoBinding {
   readonly owner: object;
   readonly rtc: RtcManager;
   readonly local: boolean;
+  readonly onPreviewReady?: () => void;
+  readonly onBindingFailure?: (error: unknown) => void;
   /** Remote-only task interaction; local preview never sends touch samples. */
   readonly interaction: InteractionController | null;
   valid: boolean;
@@ -67,6 +69,11 @@ export class RenderController {
     private readonly owner: object,
     private readonly rtc: RtcManager,
     private readonly interaction: InteractionController | null = null,
+    private readonly onPreviewReady?: (binding: VideoBinding) => void,
+    private readonly onBindingFailure?: (
+      binding: VideoBinding,
+      error: unknown,
+    ) => void,
   ) {}
 
   create(
@@ -81,6 +88,10 @@ export class RenderController {
       owner: this.owner,
       rtc: this.rtc,
       local,
+      onPreviewReady: () => {
+        if (local && position && binding.valid) this.onPreviewReady?.(binding);
+      },
+      onBindingFailure: error => this.onBindingFailure?.(binding, error),
       interaction: local ? null : this.interaction,
       valid: true,
       retiring: false,

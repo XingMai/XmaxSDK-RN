@@ -17,7 +17,7 @@ import {
   RealtimeModel,
   XmaxEnvironment,
   XmaxSDKInfo,
-} from '@xmax/react-native-sdk';
+} from '@xmaxai/react-native-sdk';
 import { colors, feedFont as font } from '../theme/tokens';
 import { FeedLanguageButton } from '../components/FeedLanguageButton';
 import { useLocalization } from '../localization/LocalizationProvider';

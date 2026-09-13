@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { XmaxSDKInfo, type XmaxEnvironment } from '@xmax/react-native-sdk';
+import { XmaxSDKInfo, type XmaxEnvironment } from '@xmaxai/react-native-sdk';
 import Clipboard from '@react-native-clipboard/clipboard';
 import Video from 'react-native-video';
 import { useStorage, formatFileSize } from '../storage/useStorage';

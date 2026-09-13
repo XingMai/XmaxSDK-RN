@@ -1,3 +1,4 @@
+import './RtcTypeCompatibility';
 import { XmaxLogger } from '../Logging/XmaxLogger';
 import { RtcStatsLogger } from './RtcStatsLogger';
 import { PermissionsAndroid, Platform } from 'react-native';
@@ -55,7 +56,7 @@ export type RtcEvent =
       height: number;
     }
   | { type: 'sei'; stream: RemoteStream; message: string }
-  | { type: 'error'; error: XmaxError }
+  | { type: 'error'; error: XmaxError; scope?: 'connection' | 'all' }
   | { type: 'quality'; quality: RealtimeNetworkQuality }
   | { type: 'performance'; alarm: RealtimePerformanceAlarm };
 
@@ -251,6 +252,7 @@ export class RtcManager {
             XmaxLogger.rtc.error(() => `RTC engine error: ${code}`);
             emit({
               type: 'error',
+              scope: 'all',
               error: new XmaxError({
                 code: XmaxErrorCode.rtcError,
                 message: `RTC engine error (${code})`,
@@ -280,6 +282,14 @@ export class RtcManager {
         }),
         'Register RTC events',
       );
+      if (
+        Platform.OS === 'android' &&
+        !NativeRuntime.adaptRtcVideoEvents(owner)
+      )
+        throw new XmaxError({
+          code: XmaxErrorCode.rtcError,
+          message: 'Unable to adapt RTC events',
+        });
     })();
 
     try {

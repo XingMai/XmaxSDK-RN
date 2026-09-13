@@ -269,7 +269,7 @@ import {
   XmaxClient,
   RealtimeModel,
   CameraPosition,
-} from '@xmax/react-native-sdk';
+} from '@xmaxai/react-native-sdk';
 
 const client = new XmaxClient({ apiKey: 'YOUR_XMAX_API_KEY' });
 
@@ -311,7 +311,7 @@ import {
   XmaxRealtimeVideo,
   VideoContentMode,
   type RealtimeVideoTrack,
-} from '@xmax/react-native-sdk';
+} from '@xmaxai/react-native-sdk';
 
 // Inside your screen component:
 const [localTrack, setLocalTrack] = useState<RealtimeVideoTrack | null>(null);
@@ -377,20 +377,27 @@ input stream or starting generation.
 | Listener | Purpose |
 | --- | --- |
 | `setStateListener` | Observe pipeline states during real-time generation. |
-| `setErrorListener` | Handle fatal errors that prevent the realtime workflow from continuing. |
-| `setCameraPreviewReadyListener` | Notify when the initial local camera frame is ready for preview rendering. |
 | `setNetworkQualityListener` | Monitor uplink and downlink network quality. |
 | `setPerformanceAlarmListener` | Detect device performance limitations or recovery, with a suggested video format when available. |
 
-For example, monitor state changes and errors:
+Local media moves through `Idle → Preparing → Ready`. A camera becomes `Ready`
+after its first valid frame and preview binding. A connection moves through
+`Connecting → Connected → Generating`; termination passes through `Disconnecting`
+and ends in `Ready` when local media is retained, or `Idle` after `close()`.
+
+`state.reason` is `null` during a new operation and describes termination as
+`normal`, `orientationChanged`, or `failure` (with an `XmaxError`). The final state
+retains the most recent session ID and clears the task ID. Awaited operation
+errors reject their promises; background lifecycle failures arrive through
+`state.reason`. For example:
 
 ```ts
 await realtime.setStateListener(state => {
   setConnectionState(state.connectionState);
-});
-
-await realtime.setErrorListener(error => {
-  setErrorMessage(`${error.code} ${error.message}`);
+  if (state.reason?.type === 'failure') {
+    const error = state.reason.error;
+    setErrorMessage(`${error.code} ${error.message}`);
+  }
 });
 ```
 

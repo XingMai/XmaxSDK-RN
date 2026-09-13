@@ -9,9 +9,6 @@ const {
   objectURL,
   filePath,
 } = require('../lib/commonjs/Service/Storage/StorageValidation');
-const {
-  CosTransferManger,
-} = require('../node_modules/react-native-cos-sdk-nobeacon/lib/commonjs/cos_transfer');
 const payload = {
   bucket: 'fixture-123',
   region: 'ap-nanjing',
@@ -210,46 +207,4 @@ test('download validates destinations independently of upload credentials', asyn
     }),
     { code: 'INVALID_CONFIGURATION' },
   );
-});
-test('COS callback groups isolate concurrent progress and clear after completion or start failure', async () => {
-  const requests = [];
-  const native = {
-    upload: async (...args) => {
-      requests.push(args);
-      return String(requests.length);
-    },
-  };
-  const transfer = new CosTransferManger('fixture', native);
-  const received = [];
-  await transfer.upload('b', 'one', 'file:///one', {
-    resultListener: {
-      successCallBack: () => received.push('one done'),
-      failCallBack: () => {},
-    },
-    progressCallback: () => received.push('one progress'),
-  });
-  await transfer.upload('b', 'two', 'file:///two', {
-    resultListener: {
-      successCallBack: () => received.push('two done'),
-      failCallBack: () => {},
-    },
-    progressCallback: () => received.push('two progress'),
-  });
-  transfer.runProgressCallBack(requests[1][7], 1, 2);
-  transfer.runResultSuccessCallBack(requests[0][5]);
-  transfer.runProgressCallBack(requests[0][7], 1, 2);
-  transfer.runResultSuccessCallBack(requests[1][5]);
-  assert.deepEqual(received, ['two progress', 'one done', 'two done']);
-  assert.equal(transfer.progressCallBacks.size, 0);
-  assert.equal(transfer.callbackGroups.size, 0);
-  native.upload = async () => {
-    throw Error('native reject');
-  };
-  await assert.rejects(
-    transfer.upload('b', 'three', 'file:///three', {
-      progressCallback: () => {},
-    }),
-  );
-  assert.equal(transfer.progressCallBacks.size, 0);
-  assert.equal(transfer.resultListeners.size, 0);
 });

@@ -11,20 +11,24 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.module.annotations.ReactModule
 import com.facebook.react.common.LifecycleState
 import com.ss.bytertc.engine.RTCVideo
+import com.volcengine.reactnative.vertc.events.IRTCVideoEventHandlerImpl
 import org.json.JSONObject
 import java.util.UUID
 import java.io.File
+import java.util.concurrent.Executors
 
 @ReactModule(name = XmaxRuntime.NAME)
 class XmaxRuntime(private val context: ReactApplicationContext) : NativeXmaxRuntimeSpec(context), Application.ActivityLifecycleCallbacks {
   companion object { const val NAME = "XmaxRuntime" }
   private val app = context.applicationContext as Application
+  private val files = Executors.newSingleThreadExecutor()
   private val images = XmaxImageManager(context)
   private val imageVideo = XmaxImageVideoSource(this, File(context.cacheDir, "xmax-images"))
   private val main = Handler(Looper.getMainLooper())
   @Volatile private var started = if (context.lifecycleState == LifecycleState.RESUMED) 1 else 0
   private var owner: String? = null
   private var active = false
+  private var rtcEvents: XmaxRtcEventAdapter? = null
   init { app.registerActivityLifecycleCallbacks(this) }
   override fun getName() = NAME
 
@@ -64,10 +68,44 @@ class XmaxRuntime(private val context: ReactApplicationContext) : NativeXmaxRunt
     owner = token; active = true; return true
   }
   @Synchronized override fun isActive(token: String): Boolean = owner == token && active
-  @Synchronized override fun release(token: String) { if (owner == token) { imageVideo.stop(); active = false; owner = null } }
+  @Synchronized override fun release(token: String) { if (owner == token) { closeRtcEvents(); imageVideo.stop(); active = false; owner = null } }
+
+  /** Adapts only the event handler belonging to the current media lease. */
+  @Synchronized override fun adaptRtcVideoEvents(token: String): Boolean {
+    if (!isActive(token)) return false
+    val handler = XmaxRtcEngineAccess.currentHandler() as? IRTCVideoEventHandlerImpl ?: return false
+    val adapter = XmaxRtcEventAdapter.install(handler)
+    if (rtcEvents !== adapter) {
+      rtcEvents?.close()
+      rtcEvents = adapter
+    }
+    return true
+  }
+
+  /** Invalidates pending event delivery before native teardown starts. */
+  private fun closeRtcEvents() {
+    rtcEvents?.close()
+    rtcEvents = null
+  }
   override fun randomUUID() = UUID.randomUUID().toString()
   override fun runtimeInfo() = JSONObject().put("platform", "android").put("os_version", Build.VERSION.RELEASE).put("device_model", Build.MODEL).toString()
   override fun requestPermissions(useMicrophone: Boolean, promise: Promise) { promise.resolve("android-use-PermissionsAndroid") }
+  /** Keeps file I/O off the UI thread and independent of realtime generation. */
+  override fun replaceFile(sourcePath: String, destinationPath: String, promise: Promise) {
+    try {
+      files.execute {
+        try {
+          XmaxFileCommit.replace(sourcePath, destinationPath)
+          promise.resolve(null)
+        } catch (error: Exception) {
+          promise.reject("DOWNLOAD_ERROR", "Unable to commit downloaded file", error)
+        }
+      }
+    } catch (error: java.util.concurrent.RejectedExecutionException) {
+      promise.reject("DOWNLOAD_ERROR", "Storage runtime is unavailable", error)
+    }
+  }
+
   override fun imageInfo(fileURL: String, promise: Promise) = images.info(fileURL, promise)
 
   override fun prepareImage(fileURL: String, width: Double, height: Double, promise: Promise) = images.prepare(fileURL, width, height, promise)
@@ -92,7 +130,7 @@ class XmaxRuntime(private val context: ReactApplicationContext) : NativeXmaxRunt
   @Synchronized private fun stopOwnedEngine() {
     if (owner != null && active) {
       XmaxNativeLogger.write("info", "[Xmax][Media] Releasing owned capture", 1)
-      imageVideo.stop(); active = false; RTCVideo.destroyRTCVideo() }
+      closeRtcEvents(); imageVideo.stop(); active = false; RTCVideo.destroyRTCVideo() }
   }
   override fun invalidate() {
     app.unregisterActivityLifecycleCallbacks(this)
@@ -100,6 +138,7 @@ class XmaxRuntime(private val context: ReactApplicationContext) : NativeXmaxRunt
     stopOwnedEngine()
     imageVideo.invalidate()
     images.invalidate()
+    files.shutdown()
     XmaxNativeLogger.configure(0)
     super.invalidate()
   }

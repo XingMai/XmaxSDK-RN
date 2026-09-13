@@ -32,7 +32,7 @@ import {
   type RealtimeMediaStream,
   type RealtimeVideoTrack,
   type RealtimeState,
-} from '@xmax/react-native-sdk';
+} from '@xmaxai/react-native-sdk';
 import { RealtimeControlPanel } from '../realtime/RealtimeControlPanel';
 import { RealtimeLoadingOverlay } from '../realtime/RealtimeLoadingOverlay';
 import {
@@ -91,6 +91,7 @@ export function RealtimeScreen({
     connectionState: RealtimeConnectionState.idle,
     sessionID: null,
     taskID: null,
+    reason: null,
   });
   const [busy, setBusy] = useState(true),
     [loading, setLoading] = useState(true),
@@ -145,9 +146,12 @@ export function RealtimeScreen({
         if (token === epoch.current) showError(failure);
       } finally {
         if (alive.current && token === epoch.current) {
-          mediaBusy.current = false;
-          setBusy(false);
-          setLoading(false);
+          const preparing =
+            realtime.currentState.connectionState ===
+            RealtimeConnectionState.preparing;
+          mediaBusy.current = preparing;
+          setBusy(preparing);
+          setLoading(preparing);
         }
       }
     },
@@ -166,6 +170,7 @@ export function RealtimeScreen({
       connectionState: RealtimeConnectionState.idle,
       sessionID: null,
       taskID: null,
+      reason: null,
     });
 
     const configuredClient = new XmaxClient({ apiKey, environment });
@@ -184,17 +189,34 @@ export function RealtimeScreen({
       if (!alive.current || manager.current !== realtime) return;
 
       setState(value);
+      if (value.connectionState === RealtimeConnectionState.idle) {
+        local.current = null;
+        setLocalTrack(null);
+      }
       if (
-        [
-          RealtimeConnectionState.disconnected,
-          RealtimeConnectionState.error,
-        ].includes(value.connectionState)
+        [RealtimeConnectionState.idle, RealtimeConnectionState.ready].includes(
+          value.connectionState,
+        )
       )
         setRemoteTrack(null);
-    });
-    void realtime.setErrorListener(failure => {
-      if (manager.current === realtime && AppState.currentState === 'active')
-        showError(failure);
+      if (
+        value.connectionState === RealtimeConnectionState.ready &&
+        mediaBusy.current
+      ) {
+        mediaBusy.current = false;
+        setBusy(false);
+        setLoading(false);
+      }
+      if (
+        value.reason?.type === 'failure' &&
+        AppState.currentState === 'active'
+      ) {
+        mediaBusy.current = false;
+        setGenerationRequested(false);
+        setBusy(false);
+        setLoading(false);
+        showError(value.reason.error);
+      }
     });
     void teardown.current.then(() => {
       if (
@@ -254,7 +276,6 @@ export function RealtimeScreen({
       local.current = null;
       appState.remove();
       void realtime.setStateListener(null);
-      void realtime.setErrorListener(null);
       teardown.current = generation
         .cancel(() => realtime.close())
         .catch(() => {});

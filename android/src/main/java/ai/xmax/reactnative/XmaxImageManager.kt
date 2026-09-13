@@ -62,8 +62,9 @@ internal class XmaxImageManager(private val context: Context) {
       var output: Bitmap? = null
       var file: File? = null
       try {
+        // Model buckets and pixel bounds are resolved by MediaService before preparation.
         require(width.isFinite() && height.isFinite() && width > 0 && height > 0 &&
-          width % 1 == 0.0 && height % 1 == 0.0 && width * height <= 1280000) { "Invalid prepared image dimensions" }
+          width % 1 == 0.0 && height % 1 == 0.0) { "Invalid prepared image dimensions" }
         val bounds = bounds(value)
         val options = BitmapFactory.Options().apply {
           inPreferredConfig = Bitmap.Config.ARGB_8888

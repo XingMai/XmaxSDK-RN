@@ -273,6 +273,25 @@ public final class XmaxRuntimeImplementation: NSObject, @unchecked Sendable {
     }
   }
 
+  /// Commits completed downloads on the file queue independently of the media lease.
+  @objc(replaceFile:destinationPath:resolve:reject:)
+  public func replaceFile(
+    _ sourcePath: String,
+    destinationPath: String,
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
+  ) {
+    let promise = XmaxNativePromise(resolve: resolve, reject: reject)
+    XmaxFileCommit.queue.async {
+      do {
+        try XmaxFileCommit.replace(sourcePath, destinationPath: destinationPath)
+        promise.resolve()
+      } catch {
+        promise.reject("Unable to commit downloaded file", code: "DOWNLOAD_ERROR", error: error)
+      }
+    }
+  }
+
   // MARK: - Prepared images
 
   /// Reads orientation-corrected dimensions from a local image without sending pixels to JS.

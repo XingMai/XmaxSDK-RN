@@ -45,6 +45,11 @@ RCT_EXPORT_MODULE(XmaxRuntime)
   return [self.implementation isActive:owner];
 }
 
+// iOS already serializes stream indices numerically; only Android installs an adapter.
+- (NSNumber *)adaptRtcVideoEvents:(NSString *)owner {
+  return [self.implementation isActive:owner];
+}
+
 - (void)release:(NSString *)owner {
   [self.implementation release:owner];
 }
@@ -86,6 +91,13 @@ RCT_EXPORT_MODULE(XmaxRuntime)
                    resolve:(RCTPromiseResolveBlock)resolve
                     reject:(RCTPromiseRejectBlock)reject {
   [self.implementation requestPermissions:useMicrophone resolve:resolve reject:reject];
+}
+
+- (void)replaceFile:(NSString *)sourcePath
+    destinationPath:(NSString *)destinationPath
+            resolve:(RCTPromiseResolveBlock)resolve
+             reject:(RCTPromiseRejectBlock)reject {
+  [self.implementation replaceFile:sourcePath destinationPath:destinationPath resolve:resolve reject:reject];
 }
 
 - (void)imageInfo:(NSString *)fileURL

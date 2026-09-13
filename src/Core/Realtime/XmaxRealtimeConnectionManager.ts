@@ -19,6 +19,7 @@ import { ensureActive, repeatHeartbeat } from '../../Foundation/Runtime/Async';
  */
 export class XmaxRealtimeConnectionManager {
   session: RealtimeSession | null = null;
+  lastSessionID: string | null = null;
   remoteStream: RealtimeMediaStream | null = null;
   private stopHeartbeat: (() => void) | null = null;
 
@@ -35,8 +36,10 @@ export class XmaxRealtimeConnectionManager {
     signal: AbortSignal,
     onFailure: (error: unknown) => void,
   ): Promise<RealtimeMediaStream> {
+    this.lastSessionID = null;
     // POST is intentionally allowed to settle after cancellation so its session can be reclaimed.
     const session = await this.service.createSession(model);
+    this.lastSessionID = session.id;
 
     try {
       ensureActive(signal);

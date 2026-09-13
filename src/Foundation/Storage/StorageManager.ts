@@ -1,11 +1,10 @@
 import { Platform } from 'react-native';
-import Cos, {
-  type CosTransferManger,
-  type CosXmlClientError,
-  type CosXmlServiceError,
-  type TransferTask,
-} from 'react-native-cos-sdk-nobeacon';
-import Blob from 'react-native-blob-util';
+import type {
+  CosXmlClientError,
+  CosXmlServiceError,
+} from 'react-native-cos-sdk-nobeacon/lib/typescript/data_model/errors';
+import { CosUploadAdapter, type CosUploadTask } from './CosUploadAdapter';
+import Blob from './BlobTransport';
 import type {
   StorageManaging,
   StorageConfiguration,
@@ -19,24 +18,26 @@ import { invalid, XmaxError, XmaxErrorCode } from '../Errors/XmaxError';
 import NativeRuntime from '../Native/NativeXmaxRuntime';
 
 // Pool by endpoint, never by credential. Each request supplies its own STS token.
-const transfers = new Map<string, Promise<CosTransferManger>>();
+const transfers = new Map<string, Promise<CosUploadAdapter>>();
 
-function transfer(config: StorageConfiguration): Promise<CosTransferManger> {
+function transfer(config: StorageConfiguration): Promise<CosUploadAdapter> {
   const endpoint = storageEndpoint(config);
   const key = `xmax:simple:${config.region}:${endpoint.origin}`;
   const existing = transfers.get(key);
 
   if (existing) return existing;
 
-  const promise = Cos.registerTransferManger(
-    key,
+  const promise = CosUploadAdapter.register(
     {
       region: config.region,
       host: Platform.OS === 'ios' ? endpoint.origin : endpoint.hostname,
       ...(Platform.OS === 'android' && endpoint.port
         ? { port: Number(endpoint.port) }
         : {}),
-      isHttps: endpoint.protocol === 'https:',
+      // iOS derives the scheme from host; its NSNumber isHttps setter is unnecessary.
+      ...(Platform.OS === 'android'
+        ? { isHttps: endpoint.protocol === 'https:' }
+        : {}),
       connectionTimeout: 30000,
       socketTimeout: 60000,
       isDebuggable: false,
@@ -152,7 +153,7 @@ export class StorageManager implements StorageManaging {
     return new Promise<Awaited<ReturnType<StorageManaging['upload']>>>(
       (resolve, reject) => {
         let done = false;
-        let task: TransferTask | undefined;
+        let task: CosUploadTask | undefined;
         const finish = (error?: Error, headers?: object) => {
           if (done) return;
 
@@ -198,6 +199,7 @@ export class StorageManager implements StorageManaging {
 
         manager
           .upload(configuration.bucket, objectKey, options.fileURL, {
+            signal,
             region: configuration.region,
             sessionCredentials: {
               tmpSecretId: configuration.credential.accessKeyID,
@@ -270,7 +272,7 @@ export class StorageManager implements StorageManaging {
 
       if (signal.aborted) throw cancelled();
 
-      await Blob.fs.mv(temporary, destination);
+      await NativeRuntime.replaceFile(temporary, destination);
       progress(storageProgress(byteCount, byteCount));
 
       return { fileURL: options.destinationURL, byteCount };

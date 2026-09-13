@@ -16,7 +16,10 @@ import {
   View,
 } from 'react-native';
 import { launchImageLibrary } from 'react-native-image-picker';
-import type { RealtimeContext, XmaxEnvironment } from '@xmax/react-native-sdk';
+import type {
+  RealtimeContext,
+  XmaxEnvironment,
+} from '@xmaxai/react-native-sdk';
 import { RealtimeReferenceList } from './RealtimeReferenceList';
 import { ReferenceThumbnail } from './ReferenceThumbnail';
 import { ReferenceUploadOverlay } from './ReferenceUploadOverlay';
