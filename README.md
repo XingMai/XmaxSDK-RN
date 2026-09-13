@@ -403,6 +403,36 @@ await realtime.setStateListener(state => {
 
 <br>
 
+### Cancel an operation
+
+Camera/image creation, connection, generation, camera switching and local stream
+stopping accept an optional `signal`. Use `AbortController` to cancel a call,
+then await its promise before starting its replacement:
+
+```ts
+const controller = new AbortController();
+const pending = realtime.startGeneration({
+  localStream,
+  context: { prompt: 'Watercolor' },
+  signal: controller.signal,
+});
+// On cancellation:
+controller.abort();
+try {
+  await pending;
+} catch (error) {
+  if (XmaxError.from(error).code !== XmaxErrorCode.cancelled) throw error;
+}
+```
+
+Cancellation rejects with `CANCELLED` after the operation unwinds and its required
+cleanup completes. Cancelling initial generation releases the connection while
+keeping local media. Cancelling a context update preserves the existing task.
+A completed call is unaffected by a later abort. Concurrent operations reject;
+`disconnect()` and `close()` interrupt active work and always finish cleanup.
+
+<br>
+
 ### Resource Cleanup
 
 - **`disconnect()` — Stop Remote Generation**

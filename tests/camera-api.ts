@@ -129,3 +129,19 @@ async function stateErrors(manager: import('../src').XmaxRealtimeManaging) {
   await manager.disconnect({ reason: { type: 'orientationChanged' } });
 }
 void stateErrors;
+
+async function cancellableOperations(manager: import('../src').XmaxRealtimeManaging, localStream: import('../src').RealtimeMediaStream) {
+  const controller = new AbortController();
+  const options: import('../src').RealtimeOperationOptions = { signal: controller.signal };
+  await manager.createLocalCameraStream(options);
+  await manager.createLocalImageStream({ fileURL: 'file:///image.jpg', ...options });
+  await manager.connect({ localStream, ...options });
+  const remote: import('../src').RealtimeMediaStream = await manager.startGeneration({ localStream, context: { prompt: 'test' }, ...options });
+  await manager.startGeneration({ context: { prompt: 'updated' }, ...options });
+  await manager.switchCamera(options);
+  await manager.stopLocalCameraStream(options);
+  await manager.stopLocalImageStream(options);
+  controller.abort();
+  return remote;
+}
+void cancellableOperations;

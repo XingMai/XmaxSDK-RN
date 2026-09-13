@@ -359,6 +359,7 @@ class FakeRtc {
   }
   setRemoteAudioVolume() {}
   leave() {}
+  stopLocalCapture() { this.camera = false; this.imagePath = null; }
   async close() {
     this.camera = false;
     this.imagePath = null;
@@ -573,8 +574,7 @@ test('XLab replacement queue serializes real SDK cancellation, late session clea
   const local = await manager.createLocalCameraStream();
   const rtc = FakeRtc.instances.at(-1);
   const start = prompt => queue.run(async signal => {
-    await manager.connect({ localStream: local });
-    if (!signal.aborted) await manager.startGeneration({ context: { prompt } });
+    await manager.startGeneration({ localStream: local, context: { prompt }, signal });
   });
   const a = start('A');
   await nextTurn();
@@ -813,10 +813,11 @@ test('close invalidates a camera switch while its native mirror request is pendi
   const closing = manager.close();
   await nextTurn();
   assert.equal(rtc.camera, false);
-  assert.equal(local.videoTrack.position, null);
+  assert.equal(local.videoTrack.position, 'front', 'Retire the binding after the native operation unwinds');
   gate.resolve();
   await Promise.all([closing, rejected]);
   assert.equal(manager.currentState.connectionState, 'Idle');
+  assert.equal(local.videoTrack.position, null);
 });
 
 
@@ -1193,3 +1194,153 @@ for (const size of [{ width: 1024, height: 1920 }, { width: 1920, height: 1024 }
     assert.equal(images.prepared.length, preparations, 'Unsupported dimensions must fail at model validation, before native preparation');
   });
 }
+
+test('already aborted realtime calls reject without allocating media or changing state', async t => {
+  const manager = createManager(), abort = new AbortController();
+  t.after(() => manager.close());
+  abort.abort(new Error('caller reason must not become a lifecycle failure'));
+  const signal = abort.signal, snapshot = manager.currentState;
+  for (const action of [
+    () => manager.createLocalCameraStream({ signal }),
+    () => manager.createLocalImageStream({ fileURL: '/photo.jpg', signal }),
+    () => manager.connect({ localStream: {}, signal }),
+    () => manager.startGeneration({ context: { prompt: 'test' }, signal }),
+    () => manager.switchCamera({ signal }),
+    () => manager.stopLocalCameraStream({ signal }),
+    () => manager.stopLocalImageStream({ signal }),
+  ]) {
+    await assert.rejects(action(), { code: 'CANCELLED' });
+    assert.equal(manager.currentState, snapshot);
+  }
+  assert.equal(FakeRtc.instances.at(-1).permissionCalls, 0);
+  assert.deepEqual(FakeImages.instances.at(-1).prepared, []);
+});
+
+test('caller cancellation during permission releases admission without waiting for the system dialog', async t => {
+  const manager = createManager(), permission = defer(), abort = new AbortController();
+  t.after(() => manager.close());
+  const rtc = FakeRtc.instances.at(-1);
+  t.mock.method(rtc, 'permissions', () => permission.promise);
+  const pending = manager.createLocalCameraStream({ signal: abort.signal });
+  const rejected = assert.rejects(pending, { code: 'CANCELLED' });
+  await nextTurn();
+  abort.abort();
+  await rejected;
+  assert.equal(manager.currentState.connectionState, 'Idle');
+  assert.equal(manager.currentState.reason, null);
+  const replacement = await manager.createLocalImageStream({ fileURL: '/new.jpg' });
+  permission.resolve();
+  await nextTurn();
+  assert.equal(manager.currentState.connectionState, 'Ready');
+  assert.ok(replacement.videoTrack.videoFormat);
+  assert.equal(rtc.camera, false);
+});
+
+test('cancelling after camera creation cleans prepared media before rejecting and releases signal listeners', async t => {
+  const manager = createManager(), volume = defer(), abort = new AbortController();
+  t.after(() => manager.close());
+  const add = t.mock.method(abort.signal, 'addEventListener');
+  const remove = t.mock.method(abort.signal, 'removeEventListener');
+  t.mock.method(manager, 'setRemoteAudioVolume', () => volume.promise);
+  const pending = manager.createLocalCameraStream({ signal: abort.signal });
+  const rejected = assert.rejects(pending, { code: 'CANCELLED' });
+  await nextTurn();
+  const rtc = FakeRtc.instances.at(-1);
+  assert.equal(rtc.camera, true);
+  abort.abort();
+  volume.resolve();
+  await rejected;
+  assert.equal(rtc.closed, true);
+  assert.equal(manager.currentState.connectionState, 'Idle');
+  assert.deepEqual(manager.currentState.reason, { type: 'normal' });
+  assert.equal(add.mock.callCount(), 1);
+  assert.equal(remove.mock.callCount(), 1);
+});
+
+test('caller-cancelled image preparation reclaims its late file before allowing the next operation', async t => {
+  const manager = createManager(), prepare = defer(), abort = new AbortController();
+  t.after(() => manager.close());
+  const images = FakeImages.instances.at(-1), rtc = FakeRtc.instances.at(-1);
+  const mockPrepare = t.mock.method(images, 'prepare', () => prepare.promise);
+  const pending = manager.createLocalImageStream({ fileURL: '/old.jpg', signal: abort.signal });
+  const rejected = assert.rejects(pending, { code: 'CANCELLED' });
+  await nextTurn();
+  abort.abort();
+  await assert.rejects(manager.createLocalCameraStream(), { code: 'INVALID_CONFIGURATION' });
+  prepare.resolve('file:///late.jpg');
+  await rejected;
+  assert.deepEqual(images.removed, ['file:///late.jpg']);
+  assert.equal(rtc.imagePath, null);
+  assert.equal(manager.currentState.connectionState, 'Idle');
+  mockPrepare.mock.restore();
+  await manager.createLocalCameraStream();
+  assert.equal(rtc.camera, true);
+});
+
+test('cancelled initial generation hides remote before stop and retains local media', async t => {
+  t.mock.method(globalThis, 'fetch', async (_url, init) => response(init.method === 'POST' ? sessionPayload : {}));
+  const manager = createManager(), local = await manager.createLocalCameraStream(), abort = new AbortController();
+  t.after(() => manager.close());
+  const remote = await manager.connect({ localStream: local }), hidden = defer(), rtc = FakeRtc.instances.at(-1);
+  videoBinding(remote.videoTrack).hideBeforeRelease.add(() => hidden.promise);
+  const pending = manager.startGeneration({ context: { prompt: 'test' }, signal: abort.signal });
+  const rejected = assert.rejects(pending, { code: 'CANCELLED' });
+  await nextTurn();
+  abort.abort();
+  await nextTurn();
+  assert.equal(manager.currentState.connectionState, 'Disconnecting');
+  assert.equal(rtc.packets.some(packet => packet.event === 'stop'), false);
+  hidden.resolve();
+  await rejected;
+  assert.equal(manager.currentState.connectionState, 'Ready');
+  assert.deepEqual(manager.currentState.reason, { type: 'normal' });
+  assert.equal(rtc.camera, true);
+  assert.equal(rtc.packets.filter(packet => packet.event === 'stop').length, 1);
+});
+
+test('cancelling a condition update preserves generation and late cancellation cannot affect later updates', async t => {
+  t.mock.method(globalThis, 'fetch', async (_url, init) => response(init.method === 'POST' ? sessionPayload : {}));
+  const manager = createManager(), local = await manager.createLocalCameraStream(), rtc = FakeRtc.instances.at(-1);
+  t.after(() => manager.close());
+  const start = manager.startGeneration({ localStream: local, context: { prompt: 'first' } });
+  await nextTurn();
+  const id = rtc.packets.find(packet => packet.event === 'start').uid;
+  rtc.emit({ type: 'sei', stream: { roomID: 'room-1', userID: 'bot-1' }, message: id });
+  const remote = await start;
+  const abort = new AbortController(), send = rtc.send.bind(rtc);
+  const mocked = t.mock.method(rtc, 'send', message => {
+    send(message);
+    if (JSON.parse(message).event === 'change_condition') abort.abort();
+  });
+  await assert.rejects(manager.startGeneration({ context: { prompt: 'second' }, signal: abort.signal }), { code: 'CANCELLED' });
+  assert.equal(manager.currentState.connectionState, 'Generating');
+  assert.equal(manager.currentState.taskID, id);
+  assert.equal(manager.currentState.reason, null);
+  assert.ok(remote.videoTrack.videoFormat);
+  assert.equal(rtc.packets.some(packet => packet.event === 'stop'), false);
+  mocked.mock.restore();
+  const completed = new AbortController();
+  await manager.startGeneration({ context: { prompt: 'third' }, signal: completed.signal });
+  completed.abort();
+  await manager.startGeneration({ context: { prompt: 'fourth' } });
+  assert.equal(manager.currentState.taskID, id);
+  assert.equal(rtc.joins, 1);
+});
+
+test('close pauses capture but waits for a pending native join before destroying the engine', async t => {
+  t.mock.method(globalThis, 'fetch', async (_url, init) => response(init.method === 'POST' ? sessionPayload : {}));
+  const manager = createManager(), local = await manager.createLocalCameraStream(), rtc = FakeRtc.instances.at(-1), joining = defer();
+  t.mock.method(rtc, 'join', () => joining.promise);
+  const pending = manager.connect({ localStream: local });
+  const rejected = assert.rejects(pending, { code: 'CANCELLED' });
+  await nextTurn();
+  const closing = manager.close();
+  await nextTurn();
+  assert.equal(rtc.camera, false);
+  assert.equal(rtc.closed, false, 'An in-flight native operation must retain its engine');
+  assert.equal(manager.currentState.connectionState, 'Disconnecting');
+  joining.resolve();
+  await Promise.all([closing, rejected]);
+  assert.equal(rtc.closed, true);
+  assert.equal(manager.currentState.connectionState, 'Idle');
+});

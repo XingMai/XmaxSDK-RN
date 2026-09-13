@@ -283,7 +283,7 @@ export function RealtimeScreen({
   }, [apiKey, environment, model, preview, showError, nextOperation]);
 
   /**
-   * Mounts the remote track before starting or updating prompt/reference generation.
+   * Replaces the generation task and displays its confirmed remote stream.
    */
   const submit = async (
     context: RealtimeContext,
@@ -350,19 +350,25 @@ export function RealtimeScreen({
             referencePath: fileURL ? touchReference.current : null,
           };
         if (signal.aborted || token !== epoch.current) return;
-        const remote = await realtime.connect({ localStream: stream });
-
+        const remote = await realtime.startGeneration({
+          localStream: stream,
+          context,
+          signal,
+        });
         if (signal.aborted || !alive.current || token !== epoch.current) return;
-
         setRemoteTrack(remote.videoTrack);
-        await realtime.startGeneration({ context });
       });
     } catch (failure) {
       if (alive.current && token === epoch.current) {
-        setGenerationRequested(false);
-        setRemoteTrack(null);
+        if (
+          realtime.currentState.connectionState !==
+          RealtimeConnectionState.generating
+        ) {
+          setGenerationRequested(false);
+          setRemoteTrack(null);
+          onFailure?.();
+        }
         showError(failure);
-        onFailure?.();
       }
     } finally {
       if (alive.current && token === epoch.current) {

@@ -1,6 +1,7 @@
 /**
  * Owns XLab's replaceable generation task, matching UIKit's cancel-and-await flow.
- * Only the latest request may start after prior work and native cleanup settle.
+ * Cancellation propagates through each SDK call's AbortSignal. Only the latest
+ * request may start after prior work and its SDK-owned cleanup settle.
  * Finished generation stays connected so subsequent contexts can reuse its task.
  * Independent reference uploads are deliberately outside this queue.
  */
@@ -30,21 +31,18 @@ export class RealtimeGenerationOperations {
 
     const controller = new AbortController();
     this.controller = controller;
-    // Interrupt the SDK now, rather than waiting behind its remote confirmation.
-    const interrupt = cleanup ?? (previous ? this.disconnect : null);
-    const interrupted = interrupt
-      ? Promise.resolve().then(interrupt)
+    // Explicit close may pause capture immediately, even during independent upload preparation.
+    // The next request still waits for both the previous task and its cleanup.
+    const cleaning = cleanup
+      ? Promise.resolve().then(cleanup)
       : Promise.resolve();
     const operation = (async () => {
-      const [, result] = await Promise.allSettled([completion, interrupted]);
+      const [, result] = await Promise.allSettled([completion, cleaning]);
       if (controller.signal.aborted) return;
       if (result.status === 'rejected') throw result.reason;
-
       try {
         await action(controller.signal);
       } catch (error) {
-        if (controller.signal.aborted) return;
-        await this.disconnect().catch(() => {});
         if (!controller.signal.aborted) throw error;
       }
     })().finally(() => {

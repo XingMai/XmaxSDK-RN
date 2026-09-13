@@ -33,6 +33,7 @@ import {
   type RealtimeMediaStream,
   type RealtimeState,
   type RealtimeReason,
+  type RealtimeOperationOptions,
 } from '../../Service/Realtime/RealtimeTypes';
 import type {
   XmaxRealtimeManaging,
@@ -77,6 +78,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       scope => this.cleanup(scope),
       () => this.media.stream !== null,
       () => this.connection.lastSessionID,
+      () => this.rtc.stopLocalCapture(),
     );
     this.render = new RenderController(
       this,
@@ -222,51 +224,64 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   createLocalCameraStream(
     options: CameraStreamOptions = {},
   ): Promise<RealtimeMediaStream> {
-    return this.createLocal('camera', token =>
-      this.media.createCamera(options, token.signal),
+    return this.createLocal(
+      'camera',
+      token => this.media.createCamera(options, token.signal),
+      options.signal,
     );
   }
 
   createLocalImageStream(
     options: ImageStreamOptions,
   ): Promise<RealtimeMediaStream> {
-    return this.createLocal('image', token =>
-      this.media.createImage(options, token.signal),
+    return this.createLocal(
+      'image',
+      token => this.media.createImage(options, token.signal),
+      options.signal,
     );
   }
 
   private createLocal(
     source: 'camera' | 'image',
     prepare: (token: RealtimeOperation) => Promise<RealtimeMediaStream>,
+    signal?: AbortSignal,
   ): Promise<RealtimeMediaStream> {
-    return this.coordinator.run('media', async token => {
-      if (this.connection.session)
-        throw invalid('Disconnect before changing the local input');
-      if (this.media.source)
-        throw invalid(
-          'Stop the current local stream before creating another one',
-        );
-      this.observe();
-      this.connection.lastSessionID = null;
-      this.update(RealtimeConnectionState.preparing, token);
-      token.ensureCurrent();
-      const stream = await prepare(token);
-      token.ensureCurrent();
-      token.setFailureScope('all');
-      await this.setRemoteAudioVolume(source === 'camera' ? 0 : 1);
-      token.ensureCurrent();
-      if (source === 'image') this.update(RealtimeConnectionState.ready, token);
-      return stream;
-    });
+    return this.coordinator.run(
+      'media',
+      async token => {
+        if (this.connection.session)
+          throw invalid('Disconnect before changing the local input');
+        if (this.media.source)
+          throw invalid(
+            'Stop the current local stream before creating another one',
+          );
+        this.observe();
+        this.connection.lastSessionID = null;
+        this.update(RealtimeConnectionState.preparing, token);
+        token.ensureCurrent();
+        const stream = await prepare(token);
+        token.setFailureScope('all');
+        token.ensureCurrent();
+        await this.setRemoteAudioVolume(source === 'camera' ? 0 : 1);
+        token.ensureCurrent();
+        if (source === 'image')
+          this.update(RealtimeConnectionState.ready, token);
+        return stream;
+      },
+      signal,
+    );
   }
 
   connect({
     localStream,
-  }: {
+    signal,
+  }: RealtimeOperationOptions & {
     localStream: RealtimeMediaStream;
   }): Promise<RealtimeMediaStream> {
-    return this.coordinator.run('connection', token =>
-      this.connectInternal(localStream, token),
+    return this.coordinator.run(
+      'connection',
+      token => this.connectInternal(localStream, token),
+      signal,
     );
   }
 
@@ -291,114 +306,62 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     return stream;
   }
 
-  startGeneration(options: {
-    localStream: RealtimeMediaStream;
-    context?: RealtimeContext | null;
-  }): Promise<RealtimeMediaStream>;
-
-  startGeneration(options?: {
-    context?: RealtimeContext | null;
-  }): Promise<void>;
+  startGeneration(
+    options: RealtimeOperationOptions & {
+      localStream: RealtimeMediaStream;
+      context?: RealtimeContext | null;
+    },
+  ): Promise<RealtimeMediaStream>;
 
   startGeneration(
-    options: {
+    options?: RealtimeOperationOptions & {
+      context?: RealtimeContext | null;
+    },
+  ): Promise<void>;
+
+  startGeneration(
+    options: RealtimeOperationOptions & {
       localStream?: RealtimeMediaStream;
       context?: RealtimeContext | null;
     } = {},
   ): Promise<RealtimeMediaStream | void> {
-    return this.coordinator.run('generation', async token => {
-      const { signal } = token;
-      const local = options.localStream ?? this.media.stream;
+    return this.coordinator.run(
+      'generation',
+      async token => {
+        const { signal } = token;
+        const local = options.localStream ?? this.media.stream;
 
-      if (!local) throw invalid('Create a local media stream first');
+        if (!local) throw invalid('Create a local media stream first');
 
-      this.render.requireLocal(local);
-      this.generation.validateContext(options.context);
+        this.render.requireLocal(local);
+        this.generation.validateContext(options.context);
 
-      let remoteStream = this.connection.remoteStream;
+        let remoteStream = this.connection.remoteStream;
 
-      if (!remoteStream) {
-        if (!options.localStream)
-          throw invalid(
-            'Connect before starting generation without a localStream',
-          );
+        if (!remoteStream) {
+          if (!options.localStream)
+            throw invalid(
+              'Connect before starting generation without a localStream',
+            );
 
-        remoteStream = await this.connectInternal(local, token);
-      }
-
-      const updating =
-        this.currentState.connectionState ===
-        RealtimeConnectionState.generating;
-
-      if (!updating) token.setFailureScope('connection');
-      const format = this.render.requireLocal(local).format;
-      const remote = await this.generation.start(
-        format,
-        options.context,
-        signal,
-      );
-
-      ensureActive(signal);
-      if (remote && remoteStream.videoTrack) {
-        const binding = videoBinding(remoteStream.videoTrack);
-
-        if (binding) {
-          binding.remote = remote;
-          binding.confirmed = true;
-          refreshBinding(binding);
-        }
-      }
-
-      this.update(RealtimeConnectionState.generating, token);
-      if (options.localStream) return remoteStream;
-    });
-  }
-
-  switchCamera(): Promise<RealtimeMediaStream> {
-    return this.coordinator.run('cameraSwitch', async token => {
-      const { signal } = token;
-      if (this.media.source !== 'camera')
-        throw invalid('Create a local camera stream first');
-      const generating = this.generation.taskID !== null;
-      if (generating) token.setFailureScope('connection');
-
-      if (generating) {
-        const binding = videoBinding(this.connection.remoteStream?.videoTrack);
-
-        if (binding) {
-          binding.confirmed = false;
-          refreshBinding(binding);
+          remoteStream = await this.connectInternal(local, token);
         }
 
-        this.generation.stop();
-        this.update(RealtimeConnectionState.connected, token);
-      }
+        const updating =
+          this.currentState.connectionState ===
+          RealtimeConnectionState.generating;
 
-      const local = await this.media.switchCamera(signal);
-
-      ensureActive(signal);
-      if (generating) {
-        // Match iOS: let the new camera settle before starting a fresh task.
-        await waitFor<void>(
-          resolve => {
-            const timer = setTimeout(resolve, 500);
-
-            return () => clearTimeout(timer);
-          },
-          signal,
-          1000,
-          'Camera switch',
-        );
-
+        if (!updating) token.setFailureScope('connection');
+        const format = this.render.requireLocal(local).format;
         const remote = await this.generation.start(
-          this.render.requireLocal(local).format,
-          null,
+          format,
+          options.context,
           signal,
         );
-        const track = this.connection.remoteStream?.videoTrack;
 
-        if (remote && track) {
-          const binding = videoBinding(track);
+        ensureActive(signal);
+        if (remote && remoteStream.videoTrack) {
+          const binding = videoBinding(remoteStream.videoTrack);
 
           if (binding) {
             binding.remote = remote;
@@ -407,12 +370,80 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
           }
         }
 
-        ensureActive(signal);
         this.update(RealtimeConnectionState.generating, token);
-      }
+        if (options.localStream) return remoteStream;
+      },
+      options.signal,
+    );
+  }
 
-      return local;
-    });
+  switchCamera(
+    options: RealtimeOperationOptions = {},
+  ): Promise<RealtimeMediaStream> {
+    return this.coordinator.run(
+      'cameraSwitch',
+      async token => {
+        const { signal } = token;
+        if (this.media.source !== 'camera')
+          throw invalid('Create a local camera stream first');
+        const generating = this.generation.taskID !== null;
+        if (generating) token.setFailureScope('connection');
+
+        if (generating) {
+          const binding = videoBinding(
+            this.connection.remoteStream?.videoTrack,
+          );
+
+          if (binding) {
+            binding.confirmed = false;
+            refreshBinding(binding);
+          }
+
+          this.generation.stop();
+          this.update(RealtimeConnectionState.connected, token);
+        }
+
+        const local = await this.media.switchCamera(signal);
+
+        ensureActive(signal);
+        if (generating) {
+          // Match iOS: let the new camera settle before starting a fresh task.
+          await waitFor<void>(
+            resolve => {
+              const timer = setTimeout(resolve, 500);
+
+              return () => clearTimeout(timer);
+            },
+            signal,
+            1000,
+            'Camera switch',
+          );
+
+          const remote = await this.generation.start(
+            this.render.requireLocal(local).format,
+            null,
+            signal,
+          );
+          const track = this.connection.remoteStream?.videoTrack;
+
+          if (remote && track) {
+            const binding = videoBinding(track);
+
+            if (binding) {
+              binding.remote = remote;
+              binding.confirmed = true;
+              refreshBinding(binding);
+            }
+          }
+
+          ensureActive(signal);
+          this.update(RealtimeConnectionState.generating, token);
+        }
+
+        return local;
+      },
+      options.signal,
+    );
   }
 
   /** Coalesces connection cleanup when a concurrent close expands its scope. */
@@ -437,28 +468,35 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     return this.coordinator.disconnect(options?.reason);
   }
 
-  stopLocalCameraStream(): Promise<void> {
-    return this.stopLocal('camera');
+  stopLocalCameraStream(options: RealtimeOperationOptions = {}): Promise<void> {
+    return this.stopLocal('camera', options.signal);
   }
 
-  stopLocalImageStream(): Promise<void> {
-    return this.stopLocal('image');
+  stopLocalImageStream(options: RealtimeOperationOptions = {}): Promise<void> {
+    return this.stopLocal('image', options.signal);
   }
 
-  private stopLocal(source: 'camera' | 'image'): Promise<void> {
-    return this.coordinator.run('media', async token => {
-      if (this.connection.session)
-        throw invalid('Disconnect before stopping the local input');
+  private stopLocal(
+    source: 'camera' | 'image',
+    signal?: AbortSignal,
+  ): Promise<void> {
+    return this.coordinator.run(
+      'media',
+      async token => {
+        if (this.connection.session)
+          throw invalid('Disconnect before stopping the local input');
 
-      token.setFailureScope('all');
-      await this.media.stop(source);
-      this.update(
-        this.media.stream
-          ? RealtimeConnectionState.ready
-          : RealtimeConnectionState.idle,
-        token,
-      );
-    });
+        token.setFailureScope('all');
+        await this.media.stop(source);
+        this.update(
+          this.media.stream
+            ? RealtimeConnectionState.ready
+            : RealtimeConnectionState.idle,
+          token,
+        );
+      },
+      signal,
+    );
   }
 
   close(): Promise<void> {

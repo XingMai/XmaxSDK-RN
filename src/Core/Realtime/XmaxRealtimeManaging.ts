@@ -2,6 +2,7 @@ import type {
   RealtimeConfiguration,
   RealtimeState,
   RealtimeReason,
+  RealtimeOperationOptions,
   RealtimeMediaStream,
   CameraStreamOptions,
   ImageStreamOptions,
@@ -35,6 +36,11 @@ export type RealtimePerformanceAlarmListener = (
  * Obtain an instance from XmaxClient.createRealtimeManager(). Listeners use
  * replacement semantics; pass null to clear a listener. Call close() when
  * the owning screen is finished with the manager.
+ *
+ * Cancellable operations accept an optional AbortSignal. Cancellation of initial
+ * generation releases its connection; cancellation of a context update preserves
+ * the existing generation. Disconnect/close always finish cleanup and cannot be
+ * cancelled. Overlapping operations reject instead of silently queuing.
  */
 export interface XmaxRealtimeManaging {
   /**
@@ -109,7 +115,7 @@ export interface XmaxRealtimeManaging {
    * Stops local camera capture after disconnect(). Does nothing if the active
    * input is an image. Use close() to interrupt ongoing work and release all resources.
    */
-  stopLocalCameraStream(): Promise<void>;
+  stopLocalCameraStream(options?: RealtimeOperationOptions): Promise<void>;
 
   /**
    * Prepares a local image and continuously publishes it as video when connected.
@@ -127,7 +133,7 @@ export interface XmaxRealtimeManaging {
    * Stops the image source and removes its prepared copy after disconnect().
    * Does nothing if the active input is a camera. Use close() to interrupt preparation.
    */
-  stopLocalImageStream(): Promise<void>;
+  stopLocalImageStream(options?: RealtimeOperationOptions): Promise<void>;
 
   /**
    * Switches the camera while preserving the local video-track object.
@@ -135,7 +141,9 @@ export interface XmaxRealtimeManaging {
    * If generation is active, restarts its task with the cached context after
    * the camera switches. The room connection is retained on success.
    */
-  switchCamera(): Promise<RealtimeMediaStream>;
+  switchCamera(
+    options?: RealtimeOperationOptions,
+  ): Promise<RealtimeMediaStream>;
 
   /**
    * Creates a session and joins RTC using a local stream owned by this manager.
@@ -143,9 +151,11 @@ export interface XmaxRealtimeManaging {
    * Returns the remote stream without starting generation. Mount its video
    * track before calling startGeneration() so rendering can be observed.
    */
-  connect(options: {
-    localStream: RealtimeMediaStream;
-  }): Promise<RealtimeMediaStream>;
+  connect(
+    options: RealtimeOperationOptions & {
+      localStream: RealtimeMediaStream;
+    },
+  ): Promise<RealtimeMediaStream>;
 
   /**
    * Interrupts pending realtime work and closes the session and room.
@@ -173,10 +183,12 @@ export interface XmaxRealtimeManaging {
    * The first generation requires context. Omitted or null context reuses the
    * last successful context. Returns the remote stream.
    */
-  startGeneration(options: {
-    localStream: RealtimeMediaStream;
-    context?: RealtimeContext | null;
-  }): Promise<RealtimeMediaStream>;
+  startGeneration(
+    options: RealtimeOperationOptions & {
+      localStream: RealtimeMediaStream;
+      context?: RealtimeContext | null;
+    },
+  ): Promise<RealtimeMediaStream>;
 
   /**
    * Starts or updates generation on an existing connection.
@@ -184,7 +196,9 @@ export interface XmaxRealtimeManaging {
    * A new task waits for a matching task confirmation; context updates reuse
    * the task and complete after sending the update. Returns no stream.
    */
-  startGeneration(options?: {
-    context?: RealtimeContext | null;
-  }): Promise<void>;
+  startGeneration(
+    options?: RealtimeOperationOptions & {
+      context?: RealtimeContext | null;
+    },
+  ): Promise<void>;
 }

@@ -33,6 +33,9 @@ interface Operation {
   controller: AbortController;
   completion: Promise<unknown>;
   failureScope: TerminationScope | null;
+  terminalError: XmaxError | null;
+  termination: Promise<void> | null;
+  preparationStarted: boolean;
 }
 
 interface Termination {
@@ -40,7 +43,6 @@ interface Termination {
   reason: RealtimeReason;
   sessionID: string | null;
   operation: Operation | null;
-  cleanups: Promise<void>[];
   completion: Promise<void>;
 }
 
@@ -60,6 +62,7 @@ export class RealtimeCoordinator {
     private readonly cleanup: (scope: TerminationScope) => Promise<void>,
     private readonly hasLocalMedia: () => boolean,
     private readonly lastSessionID: () => string | null = () => null,
+    private readonly pauseLocalCapture: () => void = () => {},
   ) {}
 
   get currentState(): RealtimeState {
@@ -87,7 +90,9 @@ export class RealtimeCoordinator {
   run<T>(
     kind: OperationKind,
     action: (token: RealtimeOperation) => Promise<T>,
+    signal?: AbortSignal,
   ): Promise<T> {
+    if (signal?.aborted) return Promise.reject(cancelledError());
     if (this.operation || this.termination)
       return Promise.reject(
         invalid('Another realtime operation is in progress'),
@@ -102,13 +107,15 @@ export class RealtimeCoordinator {
       controller: new AbortController(),
       completion: Promise.resolve(),
       failureScope: null,
+      terminalError: null,
+      termination: null,
+      preparationStarted: false,
     };
     const token: RealtimeOperation = {
       signal: entry.controller.signal,
       ensureCurrent: () => {
         if (entry.controller.signal.aborted || this.operation !== entry) {
-          const reason: unknown = entry.controller.signal.reason;
-          throw reason instanceof XmaxError ? reason : cancelledError();
+          throw entry.terminalError ?? cancelledError();
         }
       },
       setFailureScope: scope => {
@@ -116,6 +123,10 @@ export class RealtimeCoordinator {
       },
     };
     this.operation = entry;
+    const cancel = () => {
+      if (this.operation === entry) entry.controller.abort();
+    };
+    signal?.addEventListener('abort', cancel, { once: true });
     const body = Promise.resolve().then(() => {
       token.ensureCurrent();
       return action(token);
@@ -134,12 +145,10 @@ export class RealtimeCoordinator {
       .catch(async error => {
         const aborted = entry.controller.signal.aborted;
         const failure = aborted
-          ? entry.controller.signal.reason instanceof XmaxError
-            ? entry.controller.signal.reason
-            : cancelledError()
+          ? entry.terminalError ?? cancelledError()
           : XmaxError.from(error);
-        if (this.termination?.operation === entry) {
-          await this.termination.completion;
+        if (entry.termination) {
+          await entry.termination;
         } else if (
           this.operation === entry &&
           entry.kind !== 'configuration' &&
@@ -154,7 +163,7 @@ export class RealtimeCoordinator {
         } else {
           if (this.operation === entry) this.operation = null;
           if (
-            !aborted &&
+            entry.preparationStarted &&
             entry.kind === 'media' &&
             this.state.connectionState === RealtimeConnectionState.preparing
           )
@@ -169,13 +178,19 @@ export class RealtimeCoordinator {
           XmaxLogger.realtime.error(
             () => `Realtime operation failed: ${failure.code}`,
           );
-        throw failure;
-      });
+        throw entry.terminalError ?? failure;
+      })
+      .finally(() => signal?.removeEventListener('abort', cancel));
   }
 
   /** Commits a snapshot only on behalf of the current operation. */
   commit(state: RealtimeState, token: RealtimeOperation): void {
     token.ensureCurrent();
+    if (
+      state.connectionState === RealtimeConnectionState.preparing &&
+      this.operation
+    )
+      this.operation.preparationStarted = true;
     this.setState(state);
   }
 
@@ -201,14 +216,22 @@ export class RealtimeCoordinator {
   ): Promise<void> {
     const existing = this.termination;
     if (existing) {
+      // A late room error must not replace an explicit disconnect/close reason.
+      if (
+        scope === 'all' &&
+        reason.type === 'failure' &&
+        existing.reason.type !== 'failure'
+      ) {
+        existing.reason = reason;
+        if (existing.operation) existing.operation.terminalError = reason.error;
+      }
       if (scope === 'all' && existing.scope !== 'all') {
         existing.scope = 'all';
-        if (existing.operation && !existing.operation.controller.signal.aborted)
-          existing.operation.controller.abort(
-            reason.type === 'failure' ? reason.error : undefined,
-          );
-        existing.cleanups.push(this.startCleanup('all', existing));
-        if (reason.type === 'failure') existing.reason = reason;
+        if (existing.operation) {
+          existing.operation.termination = existing.completion;
+          existing.operation.controller.abort();
+        }
+        this.pauseCapture();
       }
       return existing.completion;
     }
@@ -218,26 +241,24 @@ export class RealtimeCoordinator {
       reason,
       sessionID: this.state.sessionID,
       operation: this.operation,
-      cleanups: [],
       completion: Promise.resolve(),
     };
     this.termination = pending;
-    if (
-      pending.operation &&
-      (scope === 'all' || pending.operation.kind !== 'media')
-    )
-      pending.operation.controller.abort(
-        reason.type === 'failure' ? reason.error : undefined,
-      );
-    pending.cleanups.push(this.startCleanup(scope, pending));
     pending.completion = Promise.resolve().then(async () => {
+      // Never tear down the engine or room concurrently with an operation using it.
       await pending.operation?.completion;
-      let completed = 0;
-      while (completed < pending.cleanups.length) {
-        const work = pending.cleanups.slice(completed);
-        completed += work.length;
-        await Promise.all(work);
-      }
+      let cleanedScope: TerminationScope;
+      do {
+        cleanedScope = pending.scope;
+        await this.cleanup(cleanedScope).catch(error => {
+          const failure = XmaxError.from(error);
+          XmaxLogger.realtime.error(
+            () => `Realtime cleanup failed: ${failure.code}`,
+          );
+          if (pending.reason.type !== 'failure')
+            pending.reason = { type: 'failure', error: failure };
+        });
+      } while (pending.scope !== cleanedScope);
       const next: RealtimeState = {
         connectionState:
           pending.scope === 'all' || !this.hasLocalMedia()
@@ -247,34 +268,39 @@ export class RealtimeCoordinator {
         taskID: null,
         reason: pending.reason,
       };
-      // Release admission before notifying: a listener can immediately create/connect again.
+      // Release admission before notifying so a terminal listener may start new work.
       if (this.operation === pending.operation) this.operation = null;
       this.termination = null;
       this.setState(next);
     });
+    if (
+      pending.operation &&
+      (scope === 'all' || pending.operation.kind !== 'media')
+    ) {
+      pending.operation.termination = pending.completion;
+      pending.operation.terminalError =
+        reason.type === 'failure' ? reason.error : null;
+      pending.operation.controller.abort();
+    }
     this.setState({
       ...this.state,
       connectionState: RealtimeConnectionState.disconnecting,
       taskID: null,
       reason: null,
     });
+    if (scope === 'all') this.pauseCapture();
     return pending.completion;
   }
 
-  private startCleanup(
-    scope: TerminationScope,
-    pending: Termination,
-  ): Promise<void> {
-    return Promise.resolve()
-      .then(() => this.cleanup(scope))
-      .catch(error => {
-        const failure = XmaxError.from(error);
-        XmaxLogger.realtime.error(
-          () => `Realtime cleanup failed: ${failure.code}`,
-        );
-        if (pending.reason.type !== 'failure')
-          pending.reason = { type: 'failure', error: failure };
-      });
+  /** Stops producers promptly; final resource destruction waits for operation completion. */
+  private pauseCapture(): void {
+    try {
+      this.pauseLocalCapture();
+    } catch {
+      XmaxLogger.realtime.warn(
+        'Unable to pause local capture during termination',
+      );
+    }
   }
 
   private setState(state: RealtimeState): void {

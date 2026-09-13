@@ -223,10 +223,14 @@ export interface RealtimePerformanceAlarm {
   readonly suggestedVideoFormat: RealtimeVideoFormat | null;
 }
 
-/**
- * Optional capture settings for createLocalCameraStream().
- */
-export interface CameraStreamOptions {
+/** Caller cancellation for one operation, equivalent to cancelling its Swift Task. */
+export interface RealtimeOperationOptions {
+  /** Cancels this call; lifecycle cleanup completes before its promise rejects. */
+  readonly signal?: AbortSignal;
+}
+
+/** Optional capture settings for createLocalCameraStream(). */
+export interface CameraStreamOptions extends RealtimeOperationOptions {
   /**
    * Defaults to 832 x 1472 at 24 fps for x2.0,
    * or 1024 x 1920 at 30 fps for x2.0-pro. Width and height must be positive even
@@ -248,7 +252,7 @@ export interface CameraStreamOptions {
 }
 
 /** Options for a local image that is continuously published as video. */
-export interface ImageStreamOptions {
+export interface ImageStreamOptions extends RealtimeOperationOptions {
   /** Local file URL or absolute path; Android also accepts readable content URIs. */
   readonly fileURL: string;
 

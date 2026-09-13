@@ -704,14 +704,18 @@ export class RtcManager {
     }
   }
 
-  close(): Promise<void> {
-    if (this.closing) return this.closing;
+  /** Pauses local producers promptly without destroying resources used by an unwinding operation. */
+  stopLocalCapture(): void {
     if (this.owner) NativeRuntime.stopImageVideo(this.owner);
     if (this.engine && this.active) {
       this.engine.stopVideoCapture();
       this.engine.stopAudioCapture();
     }
+  }
 
+  close(): Promise<void> {
+    if (this.closing) return this.closing;
+    this.stopLocalCapture();
     const closing = (async () => {
       try {
         await this.creating?.catch(() => {});

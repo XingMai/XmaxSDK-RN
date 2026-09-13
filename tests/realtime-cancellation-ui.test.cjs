@@ -162,14 +162,47 @@ function screenFixture(t, options = {}) {
   let starts = 0, stops = 0, connects = 0, previews = 0, closes = 0;
   const contexts = [], models = [];
   let stateListener = null;
+  let cleanup = null;
+  const cancelled = () => ({ code: 'CANCELLED' });
   const manager = {
     currentState: { connectionState: options.preparing ? 'preparing' : 'ready', reason: null },
     setStateListener: async listener => { stateListener = listener; },
     createLocalCameraStream: async () => { previews++; return { videoTrack: localTrack }; },
     createLocalImageStream: async () => { previews++; return { videoTrack: localTrack }; },
-    connect: () => { connects++; return connects === 1 ? connect.promise : Promise.resolve({ videoTrack: remoteTrack }); },
-    startGeneration: ({ context }) => { contexts.push(context); starts++; return starts === 1 ? start.promise : Promise.resolve(); },
-    disconnect: () => { stops++; return disconnect.promise; },
+    async startGeneration({ context, signal }) {
+      const updating = manager.currentState.connectionState === 'generating';
+      try {
+        if (updating && options.failUpdate) throw { code: 'RTC_ERROR', message: 'Update failed' };
+        if (signal?.aborted) throw cancelled();
+        if (!updating) {
+          manager.currentState = { connectionState: 'connecting' };
+          connects++;
+          if (connects === 1) await connect.promise; // Allocation must settle for reclamation.
+          if (signal?.aborted) throw cancelled();
+          manager.currentState = { connectionState: 'connected' };
+        }
+        contexts.push(context);
+        starts++;
+        if (starts === 1) await new Promise((resolve, reject) => {
+          const abort = () => reject(cancelled());
+          signal?.addEventListener('abort', abort, { once: true });
+          start.promise.then(resolve, reject).finally(() => signal?.removeEventListener('abort', abort));
+        });
+        if (signal?.aborted) throw cancelled();
+        manager.currentState = { connectionState: 'generating' };
+        return { videoTrack: remoteTrack };
+      } catch (error) {
+        if (!updating) await manager.disconnect();
+        throw error;
+      }
+    },
+    disconnect() {
+      if (cleanup) return cleanup;
+      if (manager.currentState.connectionState === 'ready') return Promise.resolve();
+      stops++;
+      cleanup = disconnect.promise.then(() => { manager.currentState = { connectionState: 'ready' }; }).finally(() => { cleanup = null; });
+      return cleanup;
+    },
     close: async () => { closes++; },
   };
   const { RealtimeScreen: Screen } = load('screens/RealtimeScreen.tsx', h.react, {
@@ -226,17 +259,16 @@ test('cancel during connect keeps preview, hides loading immediately and ignores
   assert.equal(f.props('Panel').canSubmit, true);
 });
 
-test('cancel keeps remote mounted for native hiding and suppresses the obsolete failure', async t => {
+test('cancel before task confirmation never mounts an obsolete remote track', async t => {
   const f = screenFixture(t);
   await tick();
   f.props('Panel').onSubmit({ prompt: 'Transform' });
   f.connect.resolve({ videoTrack: f.remoteTrack });
   await tick();
   assert.equal(f.counts().starts, 1);
-  assert.equal(f.props('Video').remoteTrack, f.remoteTrack);
+  assert.equal(f.props('Video').remoteTrack, null);
   f.props('Panel').onStop();
-  assert.equal(f.props('Video').remoteTrack, f.remoteTrack,
-    'The SDK needs the mounted container to acknowledge native hiding before RTC teardown');
+  assert.equal(f.props('Video').remoteTrack, null, 'Remote video mounts only after successful generation');
   f.start.reject({ code: 'NETWORK_ERROR', message: 'Old request failed' });
   await tick();
   assert.equal(f.props('Toast').notice, null);
@@ -685,4 +717,36 @@ test('background lifecycle failure shows a toast and retires tracks released by 
   assert.equal(f.props('Video').localTrack, null);
   assert.equal(f.props('Video').remoteTrack, null);
   assert.equal(f.props('Loading').loading, false);
+});
+
+test('a failed context update keeps the current generated video and reference selection', async t => {
+  const f = screenFixture(t, { failUpdate: true });
+  let cleared = 0;
+  await tick();
+  f.connect.resolve({ videoTrack: f.remoteTrack });
+  f.start.resolve();
+  f.props('Panel').onSubmit({ prompt: 'first' });
+  await tick();
+  f.props('Panel').onSubmit({ prompt: 'second' }, () => cleared++);
+  await tick();
+  assert.equal(f.counts().stops, 0);
+  assert.equal(f.props('Panel').generationRequested, true);
+  assert.equal(f.props('Video').remoteTrack, f.remoteTrack);
+  assert.equal(f.props('Toast').notice.message, 'Update failed');
+  assert.equal(cleared, 0);
+  assert.equal(f.props('Loading').loading, false);
+});
+
+test('unmount closes realtime promptly while cancelled touch preparation finishes independently', async t => {
+  const uploaded = deferred();
+  const f = screenFixture(t, { fileURL: 'file:///input.jpg', prepareTouch: () => uploaded.promise });
+  await tick();
+  f.props('Panel').onInstruction();
+  await tick();
+  f.dispose();
+  await tick();
+  assert.equal(f.counts().closes, 1);
+  uploaded.resolve('late-upload.jpg');
+  await tick();
+  assert.equal(f.counts().connects, 0);
 });

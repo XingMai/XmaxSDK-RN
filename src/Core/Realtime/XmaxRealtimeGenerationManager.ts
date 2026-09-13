@@ -58,30 +58,18 @@ export class XmaxRealtimeGenerationManager {
 
     this.taskID = taskID;
 
-    try {
-      const remote = await this.stream.beginGeneration(
-        taskID,
-        format,
-        resolved,
-        signal,
-      );
-
-      ensureActive(signal);
-      this.context = resolved;
-      this.interaction.startInteraction(taskID, format);
-
-      return remote;
-    } catch (error) {
-      if (this.taskID === taskID) {
-        try {
-          this.stop();
-        } catch {
-          /* Preserve the original startup failure. */
-        }
-      }
-
-      throw error;
-    }
+    // The coordinator owns cleanup after this operation unwinds, including cancellation.
+    // Keeping the task until then lets rendering hide before stop signals are sent.
+    const remote = await this.stream.beginGeneration(
+      taskID,
+      format,
+      resolved,
+      signal,
+    );
+    ensureActive(signal);
+    this.context = resolved;
+    this.interaction.startInteraction(taskID, format);
+    return remote;
   }
 
   stop(): void {
