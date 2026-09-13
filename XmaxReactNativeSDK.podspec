@@ -5,7 +5,7 @@ Pod::Spec.new do |s|
   s.version = package['version']
   s.summary = package['description']
   s.homepage = 'https://xmax.cloud'
-  s.license = { :type => 'Proprietary' }
+  s.license = { :type => 'MIT', :file => 'LICENSE' }
   s.author = 'Xmax'
   s.source = { :path => '.' }
   s.platforms = { :ios => '15.1' }

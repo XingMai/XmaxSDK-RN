@@ -2,8 +2,11 @@
   "name": "@xmaxai/react-native-sdk",
   "version": "1.0.0",
   "description": "Xmax SDK for React Native",
-  "license": "UNLICENSED",
-  "private": true,
+  "license": "MIT",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
   "main": "lib/commonjs/index.js",
   "module": "lib/module/index.js",
   "types": "lib/typescript/index.d.ts",
@@ -21,6 +24,7 @@
     "lib",
     "src",
     "README.md",
+    "LICENSE",
     "ios",
     "android/src",
     "android/build.gradle",

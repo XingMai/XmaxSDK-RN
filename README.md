@@ -184,7 +184,7 @@ We introduce XmaxSDK, a React Native SDK designed for real-time interactive vide
 
 ## Installation
 
-The SDK is currently private. Run it through the included **XLab workspace**.
+Run the included example through the **XLab workspace**.
 
 From the repository root:
 
@@ -425,5 +425,4 @@ assistance and technical support, contact us at [sdk@xmax.ai](mailto:sdk@xmax.ai
 
 ## License
 
-The RN package is currently marked `UNLICENSED` and private. Public distribution
-terms have not been added to this repository.
+XmaxSDK is available under the terms of the [MIT License](LICENSE).
