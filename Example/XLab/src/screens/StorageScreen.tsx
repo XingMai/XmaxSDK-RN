@@ -72,7 +72,7 @@ export function StorageScreen({
             onPress={onBack}
           >
             <Image
-              source={require('../assets/storage/back.png')}
+              source={require('../assets/realtime/realtime_nav_back.png')}
               style={styles.backIcon}
             />
           </Pressable>
@@ -476,10 +476,12 @@ const styles = StyleSheet.create({
   back: {
     width: 44,
     height: 44,
+    flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  backIcon: { width: 24, height: 24, resizeMode: 'contain' },
+  // The artwork includes padding; fill the button so the arrow remains legible.
+  backIcon: { width: 44, height: 44, resizeMode: 'contain' },
   topTitles: { flex: 1, marginLeft: 8, gap: 3 },
   pageTitle: { fontSize: font(20), fontWeight: '700', color: '#F4F7FB' },
   platform: {
