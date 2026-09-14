@@ -2,6 +2,7 @@ import './RtcTypeCompatibility';
 import { XmaxLogger } from '../Logging/XmaxLogger';
 import { RtcStatsLogger } from './RtcStatsLogger';
 import { detachRtcCanvas } from './RtcCanvasBinding';
+import { rtcEngineInstanceID } from './RtcEngineReference';
 import { PermissionsAndroid, Platform } from 'react-native';
 import {
   RTCManager as VendorRTCManager,
@@ -364,7 +365,7 @@ export class RtcManager {
     filePath: string,
     format: RealtimeVideoFormat,
   ): Promise<void> {
-    this.requireEngine();
+    const engine = this.requireEngine();
     const owner = this.owner!;
 
     await NativeRuntime.startImageVideo(
@@ -373,6 +374,7 @@ export class RtcManager {
       format.width,
       format.height,
       format.fps,
+      Platform.OS === 'ios' ? rtcEngineInstanceID(engine) : '',
     );
     if (this.owner !== owner || !this.active) throw cancelledError();
     XmaxLogger.media.info(

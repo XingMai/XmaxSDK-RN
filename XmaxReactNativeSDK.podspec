@@ -13,6 +13,7 @@ Pod::Spec.new do |s|
   s.private_header_files = 'ios/XmaxRuntime.h'
   s.swift_version = '6.0'
   s.dependency 'VolcEngineRTC', '3.58.1.51400'
+  s.dependency 'VolcApiEngine', '1.6.6'
   s.frameworks = 'AVFoundation', 'UIKit', 'ImageIO', 'CoreVideo', 'CoreMedia'
   install_modules_dependencies(s)
 end

@@ -2,6 +2,13 @@
 #import "XmaxReactNativeSDK-Swift.h"
 #import <React/RCTInvalidating.h>
 #import <React/RCTViewComponentView.h>
+#import <VolcApiEngine/VolcApiEngine.h>
+#import <VolcEngineRTC/VolcEngineRTC.h>
+
+/** The pinned RN RTC host exposes its API engine without creating a media engine. */
+@protocol XmaxRtcApiHost <VolcVeEngine>
++ (instancetype)sharedInstance;
+@end
 
 /** Adapts RN Codegen methods to the Swift native runtime implementation. */
 @interface XmaxRuntime () <RCTInvalidating>
@@ -136,13 +143,30 @@ RCT_EXPORT_MODULE(XmaxRuntime)
                   width:(double)width
                  height:(double)height
                     fps:(double)fps
+       engineInstanceID:(NSString *)engineInstanceID
                 resolve:(RCTPromiseResolveBlock)resolve
                  reject:(RCTPromiseRejectBlock)reject {
+  ByteRTCVideo *engine = nil;
+  @try {
+    Class<XmaxRtcApiHost> hostClass = (Class<XmaxRtcApiHost>)NSClassFromString(@"VertcApiEngine");
+    VolcApiEngine *api = [[hostClass sharedInstance] getApiEngine];
+    id instance = [api decodeArg:@{
+      @"_type": @"instance",
+      @"_instanceId": engineInstanceID,
+      @"_serviceName": @"ByteRTCVideo"
+    }];
+    if ([instance isKindOfClass:[ByteRTCVideo class]]) {
+      engine = instance;
+    }
+  } @catch (NSException *exception) {
+    // Let the runtime reject unavailable references without logging native payloads.
+  }
   [self.implementation startImageVideo:owner
                                  path:path
                                 width:width
                                height:height
                                   fps:fps
+                               engine:engine
                               resolve:resolve
                                reject:reject];
 }

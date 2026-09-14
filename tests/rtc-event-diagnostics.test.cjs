@@ -4,10 +4,10 @@ const { readFileSync } = require('node:fs');
 const vm = require('node:vm');
 
 /** Runs the installed vendor callback conversion without RTC or network calls. */
-function loadVendor() {
+function loadVendor(platform = 'android') {
   const logs = [];
   const native = {
-    Platform: { OS: 'android' },
+    Platform: { OS: platform },
     NativeModules: { VertcModule: {} },
     TurboModuleRegistry: { get: () => ({}) },
     NativeEventEmitter: class {
@@ -32,12 +32,24 @@ function loadVendor() {
   );
   vm.runInNewContext(
     source +
-      '\nthis.fixture = { MessageClientImpl, MessageProtoImpl, android_RTCVideoEventHandler, LoggerImpl, t_StreamIndex };',
+      '\nthis.fixture = { MessageClientImpl, MessageProtoImpl, android_RTCVideoEventHandler, LoggerImpl, t_StreamIndex, packObject, RTCVideo };',
     sandbox,
     { filename: 'vendor-rtc.js' },
   );
   return { ...sandbox.fixture, logs };
 }
+
+test('installed iOS RTC engine proxy retains the native identity used by the image bridge', () => {
+  const vendor = loadVendor('ios');
+  const proto = new vendor.MessageProtoImpl();
+  const reference = { _type: 'instance', _instanceId: 'engine-fixture', _serviceName: 'ByteRTCVideo' };
+  const instance = proto.decodeArg(reference);
+  const engine = vendor.packObject(instance, vendor.RTCVideo);
+  const { rtcEngineInstanceID } = require('../lib/commonjs/Foundation/RTC/RtcEngineReference');
+
+  assert.equal(rtcEngineInstanceID(engine), reference._instanceId);
+  assert.equal(proto.encodeArg(engine._instance)._instanceId, reference._instanceId);
+});
 
 test('vendor callback conversion failures do not log event argument values', async () => {
   const vendor = loadVendor();

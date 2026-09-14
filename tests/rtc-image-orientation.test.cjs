@@ -68,6 +68,7 @@ mock.module('@volcengine/react-native-rtc', {
           destroy() {},
         };
         const engine = {
+          _instance: { instanceId: `native-engine-${engines.length}` },
           calls,
           room,
           setLocalVideoCanvas(index, canvas) { calls.push(['bindLocal', index, canvas]); return 0; },
@@ -190,10 +191,56 @@ test('Android bypasses dummy capture and preserves portrait, landscape and squar
     assert.deepEqual(engines.at(-1).calls, [
       ['stopCapture'], ['source', 0, 1], ['encoder', width, height],
     ]);
-    assert.deepEqual(nativeCalls.at(-1), ['start', 'fixture-owner', '/private-image.jpg', width, height, fps]);
+    assert.deepEqual(nativeCalls.at(-1), ['start', 'fixture-owner', '/private-image.jpg', width, height, fps, '']);
     await rtc.close();
     assert.equal(engines.at(-1).calls.some(([event]) => event === 'image'), false);
     assert.deepEqual(nativeCalls.slice(-2), [['stop', 'fixture-owner'], ['destroy']]);
+  }
+});
+
+test('iOS image startup uses the existing engine reference and preserves SEI confirmation', async t => {
+  platform.OS = 'ios';
+  const rtc = new RtcManager();
+  const events = [];
+  rtc.onEvent(event => events.push(event));
+  try {
+    await rtc.open(new AbortController().signal);
+    const engine = engines.at(-1);
+    const handler = engine.handler;
+    t.mock.method(nativeRuntime, 'startImageVideo', async (_owner, _path, _width, _height, _fps, instanceID) => {
+      assert.equal(instanceID, engine._instance.instanceId);
+      // The existing bridge reference leaves the registered event handler intact.
+      handler.onSEIMessageReceived(
+        { roomId: 'room', userId: 'bot', streamIndex: 0 },
+        new TextEncoder().encode('task-fixture?os=rn-ios&index=0').buffer,
+      );
+    });
+    rtc.configureImageSource();
+    await rtc.startImage('/private-image.jpg', { width: 736, height: 1664, fps: 24 });
+    assert.equal(engine.handler, handler);
+    assert.deepEqual(events.filter(event => event.type === 'sei'), [{
+      type: 'sei', stream: { roomID: 'room', userID: 'bot' },
+      message: 'task-fixture?os=rn-ios&index=0',
+    }]);
+  } finally {
+    await rtc.close();
+    platform.OS = 'android';
+  }
+});
+
+test('iOS missing native engine identity fails before starting an image source', async t => {
+  platform.OS = 'ios';
+  const rtc = new RtcManager();
+  let started = false;
+  t.mock.method(nativeRuntime, 'startImageVideo', async () => { started = true; });
+  try {
+    await rtc.open(new AbortController().signal);
+    delete engines.at(-1)._instance;
+    await assert.rejects(rtc.startImage('/private-image.jpg', { width: 736, height: 1664, fps: 24 }), { code: 'RTC_ERROR' });
+    assert.equal(started, false);
+  } finally {
+    await rtc.close();
+    platform.OS = 'android';
   }
 });
 
@@ -271,7 +318,7 @@ test('iOS submits full native frames at the requested fps and stops them before 
       assert.deepEqual(engines.at(-1).calls, [
         ['stopCapture'], ['source', 0, 1], ['encoder', width, height],
       ]);
-      assert.deepEqual(nativeCalls.at(-1), ['start', 'fixture-owner', '/private-image.jpg', width, height, fps]);
+      assert.deepEqual(nativeCalls.at(-1), ['start', 'fixture-owner', '/private-image.jpg', width, height, fps, engines.at(-1)._instance.instanceId]);
       await rtc.close();
       assert.equal(engines.at(-1).calls.some(([event]) => event === 'image'), false);
       assert.deepEqual(nativeCalls.slice(-2), [['stop', 'fixture-owner'], ['destroy']]);

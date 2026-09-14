@@ -338,13 +338,14 @@ public final class XmaxRuntimeImplementation: NSObject, @unchecked Sendable {
   /// Starts repeated native image frames using the RN adapter's already-created RTC singleton.
   /// Invalid formats, unavailable engines, and image decoding failures reject the operation.
   /// Nonzero pushExternalVideoFrame results do not reject startup or stop subsequent frames.
-  @objc(startImageVideo:path:width:height:fps:resolve:reject:)
+  @objc(startImageVideo:path:width:height:fps:engine:resolve:reject:)
   public func startImageVideo(
     _ token: String,
     path: String,
     width: Double,
     height: Double,
     fps: Double,
+    engine: ByteRTCVideo?,
     resolve: @escaping RCTPromiseResolveBlock,
     reject: @escaping RCTPromiseRejectBlock
   ) {
@@ -361,8 +362,8 @@ public final class XmaxRuntimeImplementation: NSObject, @unchecked Sendable {
         return
       }
 
-      // The pinned SDK returns the existing singleton for subsequent create calls.
-      guard let engine = ByteRTCVideo.createRTCVideo("", delegate: nil, parameters: [:]) else {
+      // Recreating the singleton with a nil delegate removes RN's SEI callbacks.
+      guard let engine else {
         promise.reject("RTC engine is unavailable")
         return
       }

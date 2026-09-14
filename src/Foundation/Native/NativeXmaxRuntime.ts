@@ -31,13 +31,14 @@ export interface Spec extends TurboModule {
   /** Removes only files created by prepareImage. */
   removePreparedImage(fileURL: string): Promise<void>;
 
-  /** Repeats a prepared image in native memory, without JS frame delivery. */
+  /** Repeats a prepared image; iOS resolves engineInstanceID from the existing RTC bridge. */
   startImageVideo(
     owner: string,
     path: string,
     width: number,
     height: number,
     fps: number,
+    engineInstanceID: string,
   ): Promise<void>;
 
   /** Sets the image frame task synchronously; an empty ID clears it. False means the source is unavailable. */

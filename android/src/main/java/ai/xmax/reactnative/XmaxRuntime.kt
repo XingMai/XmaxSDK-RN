@@ -129,7 +129,7 @@ class XmaxRuntime(private val context: ReactApplicationContext) : NativeXmaxRunt
   override fun removePreparedImage(fileURL: String, promise: Promise) = images.remove(fileURL, promise)
 
   /** Starts only against the engine leased by the matching JS manager. */
-  @Synchronized override fun startImageVideo(token: String, path: String, width: Double, height: Double, fps: Double, promise: Promise) {
+  @Synchronized override fun startImageVideo(token: String, path: String, width: Double, height: Double, fps: Double, engineInstanceID: String, promise: Promise) {
     try {
       check(isActive(token)) { "Media engine is not active" }
       require(XmaxImageVideoFormat.isValid(width, height, fps)) { "Invalid image video format" }
