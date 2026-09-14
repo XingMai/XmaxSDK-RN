@@ -62,6 +62,22 @@ class XmaxRuntime(private val context: ReactApplicationContext) : NativeXmaxRunt
     }
   }
 
+  /** Resolve the host on the UI thread and ignore unmounted or recycled React tags. */
+  override fun renderTrajectory(reactTag: Double, nativeID: String, command: String) {
+    main.post {
+      try {
+        val tag = reactTag.toInt()
+        val host = UIManagerHelper.getUIManager(context, tag)?.resolveView(tag)
+        if (host is android.view.ViewGroup &&
+            host.getTag(com.facebook.react.R.id.view_tag_native_id) == nativeID) {
+          XmaxTrajectoryView.renderIn(host, command)
+        }
+      } catch (_: com.facebook.react.uimanager.IllegalViewOperationException) {
+        // Unmount may overtake an already queued touch command.
+      }
+    }
+  }
+
   override fun prepareRuntime(promise: Promise) { promise.resolve(null) }
   @Synchronized override fun acquire(token: String): Boolean {
     if (owner != null || started == 0) return false

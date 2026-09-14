@@ -14,6 +14,9 @@ export interface Spec extends TurboModule {
   /** Hides the matching SDK container on the native UI thread before RTC teardown. */
   hideVideoContainer(reactTag: number, nativeID: string): Promise<void>;
 
+  /** Sends touch commands to an owned native canvas; animation stays on the UI thread. */
+  renderTrajectory(reactTag: number, nativeID: string, command: string): void;
+
   /** Atomically commits a completed download beside its destination. */
   replaceFile(sourcePath: string, destinationPath: string): Promise<void>;
 

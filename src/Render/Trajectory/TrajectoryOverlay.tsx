@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type ComponentRef,
 } from 'react';
 import {
   AppState,
@@ -17,6 +18,7 @@ import type { VideoContentMode } from '../../Service/Realtime/RealtimeTypes';
 import type { TrajectoryEffectRendering } from './TrajectoryEffectRendering';
 import { DefaultTrajectoryEffectRenderer } from './DefaultTrajectoryEffectRenderer';
 import { TrajectorySampler } from './TrajectorySampler';
+import { trajectoryTouchPoint } from './TrajectoryTouchCoordinates';
 
 /** One passive renderer plus SDK-owned responders for a confirmed remote binding. */
 export function TrajectoryOverlay({
@@ -48,6 +50,22 @@ export function TrajectoryOverlay({
   const renderer = requested ?? fallback;
   const [size, setSize] = useState({ width: 0, height: 0 });
   const sampler = useRef<TrajectorySampler | null>(null);
+  const viewport = useRef<ComponentRef<typeof View>>(null);
+
+  const touches = (event: GestureResponderEvent) => {
+    const rect = viewport.current?.getBoundingClientRect();
+    if (!rect) return [];
+    return event.nativeEvent.changedTouches.flatMap(touch => {
+      const point = trajectoryTouchPoint(touch, rect, size);
+      return point ? [{ identifier: String(touch.identifier), ...point }] : [];
+    });
+  };
+
+  const retainTouches = (event: GestureResponderEvent) => {
+    sampler.current?.retainTouches(
+      event.nativeEvent.touches.map(touch => String(touch.identifier)),
+    );
+  };
 
   useLayoutEffect(() => {
     if (
@@ -97,7 +115,9 @@ export function TrajectoryOverlay({
 
   return (
     <View
+      ref={viewport}
       collapsable={false}
+      pointerEvents="box-only"
       style={StyleSheet.absoluteFill}
       onLayout={({ nativeEvent: { layout } }) =>
         setSize(current =>
@@ -106,18 +126,34 @@ export function TrajectoryOverlay({
             : { width: layout.width, height: layout.height },
         )
       }
-      onStartShouldSetResponder={event =>
-        !!sampler.current?.contains({
-          x: event.nativeEvent.locationX,
-          y: event.nativeEvent.locationY,
-        })
-      }
-      onResponderGrant={event => sampler.current?.begin(touches(event))}
-      onResponderStart={event => sampler.current?.begin(touches(event))}
-      onResponderMove={event => sampler.current?.move(touches(event))}
-      onResponderEnd={event =>
-        sampler.current?.end(touches(event).map(touch => touch.identifier))
-      }
+      onStartShouldSetResponder={event => {
+        const rect = viewport.current?.getBoundingClientRect();
+        const point =
+          rect && trajectoryTouchPoint(event.nativeEvent, rect, size);
+        return !!point && !!sampler.current?.contains(point);
+      }}
+      onResponderGrant={event => {
+        // A new responder grant is a new gesture, even if native finger IDs are reused.
+        sampler.current?.release();
+        sampler.current?.begin(touches(event));
+      }}
+      onResponderStart={event => {
+        retainTouches(event);
+        sampler.current?.begin(touches(event));
+      }}
+      onResponderMove={event => {
+        retainTouches(event);
+        sampler.current?.move(touches(event));
+      }}
+      onResponderEnd={event => {
+        sampler.current?.end(
+          event.nativeEvent.changedTouches.map(touch =>
+            String(touch.identifier),
+          ),
+        );
+        retainTouches(event);
+      }}
+      onResponderRelease={() => sampler.current?.release()}
       onResponderTerminationRequest={() => true}
       onResponderTerminate={() => sampler.current?.cancel()}
     >
@@ -126,13 +162,4 @@ export function TrajectoryOverlay({
       </View>
     </View>
   );
-}
-
-/** Copies only changed touches, preserving each native finger identifier. */
-function touches(event: GestureResponderEvent) {
-  return event.nativeEvent.changedTouches.map(touch => ({
-    identifier: String(touch.identifier),
-    x: touch.locationX,
-    y: touch.locationY,
-  }));
 }

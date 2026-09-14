@@ -93,11 +93,22 @@ export class TrajectorySampler {
       if (point) ended.push(point.id);
       this.touches.delete(identifier);
     }
-    if (ended.length) this.render(() => this.renderer.renderEnded(ended));
-    if (!this.touches.size) {
+    if (ended.length) {
       this.generation++;
-      this.stopTimer();
+      this.render(() => this.renderer.renderEnded(ended));
     }
+    if (!this.touches.size) this.stopTimer();
+  }
+
+  /** Reconciles the authoritative active-touch snapshot, including an incomplete end delta. */
+  retainTouches(identifiers: readonly string[]): void {
+    const active = new Set(identifiers);
+    this.end([...this.touches.keys()].filter(id => !active.has(id)));
+  }
+
+  /** Ends the whole gesture immediately while allowing existing trails to fade normally. */
+  release(): void {
+    this.end([...this.touches.keys()]);
   }
 
   /** Cancels on background, geometry/renderer changes, task replacement and unmount. */
@@ -108,7 +119,7 @@ export class TrajectorySampler {
 
   /** A system gesture may cancel touches without permanently disabling this view. */
   cancel(): void {
-    this.end([...this.touches.keys()]);
+    this.release();
     this.stopTimer();
     this.render(() => this.renderer.reset());
   }

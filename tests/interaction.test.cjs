@@ -143,3 +143,20 @@ test('generation activates interaction only after SEI and stops it before networ
   assert.equal(interaction.isActive, false);
   assert.deepEqual(events, ['update', 'stop']);
 });
+
+test('touch coordinates use the overlay page origin, including navigation/safe-area offsets and density-independent sizes', () => {
+  const { trajectoryTouchPoint } = require('../lib/commonjs/Render/Trajectory/TrajectoryTouchCoordinates');
+  const viewport = { width: 320, height: 480 };
+  for (const rect of [
+    { x: 0, y: 0, width: 320, height: 480 },
+    { x: 24, y: 180, width: 320, height: 480 },
+    { x: 45, y: 96, width: 640, height: 960 },
+  ]) {
+    const touch = { pageX: rect.x + rect.width * 0.25, pageY: rect.y + rect.height * 0.75, locationX: 999, locationY: 999 };
+    assert.deepEqual(trajectoryTouchPoint(touch, rect, viewport), { x: 80, y: 360 });
+  }
+  const rect = { x: 24, y: 180, width: 320, height: 480 };
+  assert.deepEqual(trajectoryTouchPoint({ pageX: 14, pageY: 170 }, rect, viewport), { x: -10, y: -10 }, 'Clamping remains the sampler responsibility');
+  assert.equal(trajectoryTouchPoint({ pageX: 10, pageY: 10 }, { ...rect, width: 0 }, viewport), null);
+  assert.equal(trajectoryTouchPoint({ pageX: NaN, pageY: 10 }, rect, viewport), null);
+});

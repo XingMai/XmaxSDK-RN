@@ -87,6 +87,17 @@ RCT_EXPORT_MODULE(XmaxRuntime)
   });
 }
 
+- (void)renderTrajectory:(double)reactTag nativeID:(NSString *)nativeID command:(NSString *)command {
+  __weak RCTViewRegistry *registry = self.viewRegistry_DEPRECATED;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    UIView *view = [registry viewForReactTag:@(reactTag)];
+    if ([view isKindOfClass:[RCTViewComponentView class]] &&
+        [((RCTViewComponentView *)view).nativeId isEqualToString:nativeID]) {
+      [XmaxTrajectoryView renderIn:view command:command];
+    }
+  });
+}
+
 - (void)requestPermissions:(BOOL)useMicrophone
                    resolve:(RCTPromiseResolveBlock)resolve
                     reject:(RCTPromiseRejectBlock)reject {
