@@ -3,7 +3,7 @@ import './Foundation/RTC/RtcTypeCompatibility';
 /**
  * Version metadata for the installed Xmax React Native SDK.
  */
-export const XmaxSDKInfo = Object.freeze({ version: '1.0.0' });
+export const XmaxSDKInfo = Object.freeze({ version: '1.1.0' });
 
 export { XmaxClient } from './Core/XmaxClient';
 
