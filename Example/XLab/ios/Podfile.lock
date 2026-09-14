@@ -1969,7 +1969,7 @@ PODS:
   - VolcEngineRTC/Core (3.58.1.51400)
   - VolcEngineRTC/CVByteNN (3.58.1.51400)
   - VolcEngineRTC/RealXBase (3.58.1.51400)
-  - XmaxReactNativeSDK (1.1.0):
+  - XmaxReactNativeSDK (1.0.1):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2393,7 +2393,7 @@ SPEC CHECKSUMS:
   SocketRocket: 37aec555668fb852ec12e3c0de59a86ca58f0871
   VolcApiEngine: 8af6532461096ff9ec22a6f486d3cc2b522da593
   VolcEngineRTC: 511293bbde08c44439f228b82ec726ccd64eb2da
-  XmaxReactNativeSDK: a85148ffae356451f7b1bcf6f79411ace18887f4
+  XmaxReactNativeSDK: 81526bd62d295ea6b6ac1641ae153d20aa575aed
   Yoga: d1c536142c5ff8ec8cd856ab2a7c227a1d875c8e
 
 PODFILE CHECKSUM: c24c99d37d00b62c12a5e305500ad4a1686dcafc

@@ -117,7 +117,7 @@ export class RtcManager {
         RuntimeInfo,
         'sdk_version'
       >),
-      sdk_version: '1.1.0',
+      sdk_version: '1.0.1',
     };
   }
 
