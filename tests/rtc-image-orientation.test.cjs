@@ -11,6 +11,7 @@ const nativeRuntime = {
   adaptRtcVideoEvents(owner) { nativeCalls.push(['adaptEvents', owner]); return true; },
   release() {},
   async startImageVideo(...args) { nativeCalls.push(['start', ...args]); },
+  setImageVideoTask(owner, taskID) { nativeCalls.push(['task', owner, taskID]); return true; },
   stopImageVideo(owner) { nativeCalls.push(['stop', owner]); },
 };
 mock.module('react-native', {
@@ -423,4 +424,97 @@ test('RTC encoding applies all upload settings to the platform-specific native c
       platform.OS = 'android';
     }
   }
+});
+
+for (const os of ['ios', 'android']) {
+  test(`${os}: only image tasks update native SEI, and stale stops cannot clear a replacement`, async () => {
+    platform.OS = os;
+    const rtc = new RtcManager();
+    try {
+      await rtc.open(new AbortController().signal);
+      nativeCalls.length = 0;
+      rtc.beginImageTask('camera-task');
+      rtc.endImageTask('camera-task');
+      assert.deepEqual(nativeCalls, []);
+      rtc.configureImageSource();
+      await rtc.startImage('/private-image.jpg', { width: 1024, height: 1920, fps: 30 });
+      nativeCalls.length = 0;
+      rtc.beginImageTask('first');
+      rtc.beginImageTask('second');
+      rtc.endImageTask('first');
+      assert.deepEqual(nativeCalls, [['task', 'fixture-owner', 'first'], ['task', 'fixture-owner', 'second']]);
+      rtc.leave();
+      assert.deepEqual(nativeCalls.at(-1), ['task', 'fixture-owner', '']);
+      const count = nativeCalls.length;
+      rtc.endImageTask('second');
+      assert.equal(nativeCalls.length, count);
+      rtc.beginImageTask('third');
+      rtc.stopLocalCapture();
+      assert.deepEqual(nativeCalls.at(-1), ['stop', 'fixture-owner']);
+      const stoppedCount = nativeCalls.length;
+      rtc.endImageTask('third');
+      assert.equal(nativeCalls.length, stoppedCount);
+    } finally { await rtc.close(); platform.OS = 'android'; }
+  });
+}
+
+const { StreamController } = require('../lib/commonjs/Stream/StreamController');
+
+test('image task metadata precedes start, survives confirmation and condition changes, and clears before stop', async () => {
+  const calls = [];
+  let emit;
+  const rtc = {
+    onEvent(listener) { emit = listener; return () => {}; },
+    beginImageTask(taskID) { calls.push(['begin', taskID]); },
+    endImageTask(taskID) { calls.push(['end', taskID]); },
+  };
+  const room = { connection: { roomID: 'room', botName: 'bot' }, send: (...args) => calls.push(args.slice(0, 2)) };
+  const stream = new StreamController(rtc, room);
+  const taskID = 'task-test', format = { width: 1024, height: 1920, fps: 30 };
+  const started = stream.beginGeneration(taskID, format, {}, new AbortController().signal);
+  assert.deepEqual(calls, [['begin', taskID], ['start', taskID]]);
+  emit({ type: 'sei', stream: { roomID: 'room', userID: 'bot' }, message: `${taskID}&index=0` });
+  await started;
+  stream.updateGeneration(taskID, format, {});
+  assert.deepEqual(calls.at(-1), ['change_condition', taskID]);
+  assert.equal(calls.filter(([name]) => name === 'end').length, 0);
+  stream.stopGeneration(taskID);
+  assert.deepEqual(calls.slice(-2), [['end', taskID], ['stop', taskID]]);
+});
+
+test('cancelled confirmation and failed start clear image metadata; pre-aborted starts never attach it', async () => {
+  for (const scenario of ['cancel', 'send-failure', 'pre-aborted']) {
+    const calls = [], controller = new AbortController();
+    const rtc = {
+      onEvent() { return () => {}; },
+      beginImageTask(id) { calls.push(['begin', id]); },
+      endImageTask(id) { calls.push(['end', id]); },
+    };
+    const room = {
+      connection: { roomID: 'room', botName: 'bot' },
+      send() { if (scenario === 'send-failure') throw new Error('Send failed'); },
+    };
+    if (scenario === 'pre-aborted') controller.abort();
+    const pending = new StreamController(rtc, room).beginGeneration('task-test', {}, {}, controller.signal);
+    if (scenario === 'cancel') controller.abort();
+    await assert.rejects(pending);
+    assert.deepEqual(calls, scenario === 'pre-aborted'
+      ? [['end', 'task-test']]
+      : [['begin', 'task-test'], ['end', 'task-test']]);
+  }
+});
+
+test('an unavailable native image source rejects before a generation command is sent', async t => {
+  const rtc = new RtcManager();
+  await rtc.open(new AbortController().signal);
+  rtc.configureImageSource();
+  t.mock.method(nativeRuntime, 'setImageVideoTask', () => false);
+  let sent = false;
+  try {
+    const stream = new StreamController(rtc, {
+      connection: { roomID: 'room' }, send() { sent = true; },
+    });
+    await assert.rejects(stream.beginGeneration('task-test', {}, {}, new AbortController().signal), { code: 'CANCELLED' });
+    assert.equal(sent, false);
+  } finally { await rtc.close(); }
 });

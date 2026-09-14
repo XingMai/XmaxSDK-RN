@@ -122,6 +122,12 @@ class XmaxRuntime(private val context: ReactApplicationContext) : NativeXmaxRunt
     } catch (error: Exception) { promise.reject("MEDIA_ERROR", error) }
   }
 
+  /** Updates frame metadata before JS sends the corresponding room command. */
+  @Synchronized override fun setImageVideoTask(token: String, taskID: String): Boolean {
+    if (owner != token || (taskID.isNotEmpty() && !isActive(token))) return false
+    return imageVideo.setTask(taskID)
+  }
+
   @Synchronized override fun stopImageVideo(token: String) {
     if (owner == token) imageVideo.stop()
   }

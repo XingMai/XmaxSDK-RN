@@ -135,71 +135,34 @@ test('nonempty model buckets require exact dimensions before rounding or resizin
   }
 });
 
-test('iOS room payload omits the OS task suffix, with strict SEI matching', () => {
-  const id = taskIDFromUUID('00112233-4455-4677-8899-aabbccddeeff');
-  assert.equal(id, 'task-ABEiM0RVRneImaq7zN3u_w');
-  const payload = JSON.parse(
-    roomEvent(
-      'start',
-      'user-1',
-      runtime,
-      id,
-      { width: 832, height: 1472, fps: 24 },
-      { prompt: '水彩', referencePath: 'image/key' },
-    ),
-  );
-  assert.deepEqual(payload, {
-    event: 'start',
-    user_id: 'user-1',
-    uid: id,
-    params: {
-      model: 'default',
-      size: [832, 1472],
-      prompt: '水彩',
-      ref_image_path: 'image/key',
-    },
-    runtime,
-  });
-  assert(matchesTaskSEI(id, id));
-  assert(matchesTaskSEI(id, `  ${id}&index=42\n`));
-  for (const wrong of [
-    id + '?os=ios',
-    id + '?os=ios&index=42',
-    id + '&index=',
-    id + '&index=-1',
-    id + '&index=4x',
-    id + '?os=android',
-    id + 'evil',
-  ])
-    assert.equal(matchesTaskSEI(id, wrong), false);
-});
-
-test('both platforms use suffix-free task IDs for every command and SEI confirmation', () => {
-  const id = taskIDFromUUID('00112233-4455-4677-8899-aabbccddeeff');
-  assert.equal(id, 'task-ABEiM0RVRneImaq7zN3u_w');
-
+test('RN task IDs carry their platform through room commands, tracks and SEI confirmation', () => {
+  const { tracksEvent } = require('../lib/commonjs/Stream/Room/RoomEvent');
+  const base = 'task-ABEiM0RVZneImaq7zN3u_w';
   for (const platform of ['ios', 'android']) {
+    const id = taskIDFromUUID('00112233-4455-6677-8899-aabbccddeeff', platform);
+    assert.equal(id, `${base}?os=rn-${platform}`);
     for (const event of ['start', 'change_condition', 'stop']) {
-      const payload = JSON.parse(
-        roomEvent(event, 'user-1', { ...runtime, platform }, id),
-      );
+      const payload = JSON.parse(roomEvent(event, 'user-1', { ...runtime, platform }, id));
       assert.equal(payload.uid, id);
       assert.equal(payload.runtime.platform, platform);
     }
+    assert.equal(JSON.parse(tracksEvent('user-1', id, [{ x: 1, y: 2 }])).uid, id);
+    for (const message of [id, `${id}&index=0`, ` ${id}&index=42\n`, base, `${base}&index=42`]) {
+      assert(matchesTaskSEI(id, message), message);
+    }
+    // Query metadata does not change task identity, matching the native iOS SDK.
+    assert(matchesTaskSEI(id, `${base}?index=42`));
+    assert(matchesTaskSEI(id, `${base}?os=ios&index=42`));
+    for (const wrong of ['', `${base}other?os=rn-${platform}&index=42`, 'task-other', `${base}&index=`, `${base}&index=-1`, `${base}&index=4x`]) {
+      assert.equal(matchesTaskSEI(id, wrong), false, wrong);
+    }
   }
+});
 
-  assert(matchesTaskSEI(id, id));
-  assert(matchesTaskSEI(id, ` ${id}&index=42\n`));
-  for (const wrong of [
-    `${id}?os=android`,
-    `${id}?os=android&index=42`,
-    `${id}?os=ios`,
-    `${id}&index=-1`,
-    `${id}&index=4x`,
-    `${id}other`,
-  ]) {
-    assert.equal(matchesTaskSEI(id, wrong), false);
-  }
+test('task IDs reject invalid UUIDs and unsupported platforms', () => {
+  assert.throws(() => taskIDFromUUID('not-a-uuid', 'ios'), /Invalid runtime UUID/);
+  assert.throws(() => taskIDFromUUID('00112233-4455-6677-8899-aabbccddeeff', 'web'), /Unsupported runtime platform/);
+  assert.equal(matchesTaskSEI('', ''), false);
 });
 
 test('interrupt cancels confirmation promptly, cleanup runs once, operation gate reopens', async () => {
@@ -349,6 +312,8 @@ class FakeRtc {
     this.camera = true;
   }
   configureEncoding(format, minimum, maximum) { this.encoding = { format, minimum, maximum }; }
+  beginImageTask() {}
+  endImageTask() {}
   configureImageSource() { this.imageSourceConfigured = true; }
   switchCamera() {}
   async join() {
@@ -639,6 +604,7 @@ test('generation requires task + room + bot SEI, updates reuse task, disconnect 
     });
   await nextTurn();
   const id = rtc.packets.find(p => p.event === 'start').uid;
+  assert.match(id, /^task-[A-Za-z0-9_-]{22}\?os=rn-ios$/);
   const emit = (message, roomID = 'room-1', userID = 'bot-1') =>
     rtc.emit({ type: 'sei', stream: { roomID, userID }, message });
   rtc.emit({
@@ -720,6 +686,7 @@ test('failed condition update retains task and cached prompt, switch failure rel
   const pending = manager.startGeneration({ context: { prompt: 'original' } });
   await nextTurn();
   const id = rtc.packets.find(p => p.event === 'start').uid;
+  assert.match(id, /^task-[A-Za-z0-9_-]{22}\?os=rn-ios$/);
   rtc.emit({
     type: 'sei',
     stream: { roomID: 'room-1', userID: 'bot-1' },

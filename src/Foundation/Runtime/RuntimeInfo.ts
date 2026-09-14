@@ -10,9 +10,12 @@ export interface RuntimeInfo {
 
 /**
  * Encodes the runtime UUID into the task identifier format expected by the
- * room protocol. Both platforms currently omit the OS suffix.
+ * room protocol, including the React Native platform query suffix.
  */
-export function taskIDFromUUID(uuid: string): string {
+export function taskIDFromUUID(uuid: string, platform: string): string {
+  if (platform !== 'ios' && platform !== 'android')
+    throw new Error('Unsupported runtime platform');
+
   const hex = uuid.replaceAll('-', '');
 
   if (!/^[a-f0-9]{32}$/i.test(hex)) throw new Error('Invalid runtime UUID');
@@ -35,5 +38,5 @@ export function taskIDFromUUID(uuid: string): string {
     if (i + 2 < bytes.length) encoded += alphabet[value & 63]!;
   }
 
-  return `task-${encoded}`;
+  return `task-${encoded}?os=rn-${platform}`;
 }

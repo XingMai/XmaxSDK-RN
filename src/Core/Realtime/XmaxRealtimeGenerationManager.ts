@@ -54,7 +54,10 @@ export class XmaxRealtimeGenerationManager {
       return null;
     }
 
-    const taskID = taskIDFromUUID(this.rtc.randomUUID());
+    const taskID = taskIDFromUUID(
+      this.rtc.randomUUID(),
+      this.rtc.runtime.platform,
+    );
 
     this.taskID = taskID;
 

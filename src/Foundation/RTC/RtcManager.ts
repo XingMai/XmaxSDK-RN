@@ -104,6 +104,8 @@ export class RtcManager {
   private closing: Promise<void> | null = null;
   private listeners = new Set<(event: RtcEvent) => void>();
   private audioVolume = 0;
+  private imageSource = false;
+  private imageTaskID: string | null = null;
   private readonly interactionMessages = new Set<number>();
   private readonly views = new Map<string, string>();
   readonly runtime: RuntimeInfo;
@@ -394,6 +396,25 @@ export class RtcManager {
       ),
       'Configure external image source',
     );
+    this.imageSource = true;
+  }
+
+  /** Attaches generation identity to native image frames before the start command is sent. */
+  beginImageTask(taskID: string): void {
+    if (!this.imageSource) return;
+
+    this.requireEngine();
+    if (!NativeRuntime.setImageVideoTask(this.owner!, taskID))
+      throw cancelledError();
+    this.imageTaskID = taskID;
+  }
+
+  /** A late cancellation may only clear its own image task. */
+  endImageTask(taskID: string): void {
+    if (this.imageTaskID !== taskID) return;
+
+    this.imageTaskID = null;
+    if (this.owner) NativeRuntime.setImageVideoTask(this.owner, '');
   }
 
   async configureEncoding(
@@ -706,6 +727,7 @@ export class RtcManager {
   }
 
   leave(): void {
+    if (this.imageTaskID) this.endImageTask(this.imageTaskID);
     this.interactionMessages.clear();
     const room = this.room;
 
@@ -727,6 +749,8 @@ export class RtcManager {
 
   /** Pauses local producers promptly without destroying resources used by an unwinding operation. */
   stopLocalCapture(): void {
+    this.imageTaskID = null;
+    this.imageSource = false;
     if (this.owner) NativeRuntime.stopImageVideo(this.owner);
     if (this.engine && this.active) {
       this.engine.stopVideoCapture();

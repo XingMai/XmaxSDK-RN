@@ -22,6 +22,7 @@ import java.util.concurrent.TimeUnit
 internal class XmaxImageVideoSource(private val gate: Any, private val directory: File) {
   private val worker = Executors.newSingleThreadScheduledExecutor()
   private var generation = 0L
+  private val task = XmaxImageFrameTask()
   private var timer: ScheduledFuture<*>? = null
 
   fun start(
@@ -69,6 +70,11 @@ internal class XmaxImageVideoSource(private val gate: Any, private val directory
           check(token == generation && active()) { "Image source was cancelled" }
 
           fun push() {
+            val sei = task.nextData() ?: return
+            val seiBuffer = ByteBuffer.allocateDirect(sei.size).apply {
+              put(sei)
+              flip()
+            }
             val frame = CpuBufferVideoFrameBuilder(VideoPixelFormat.RGBA)
               .setWidth(width)
               .setHeight(height)
@@ -76,8 +82,9 @@ internal class XmaxImageVideoSource(private val gate: Any, private val directory
               .setTimeStampUs(SystemClock.elapsedRealtimeNanos() / 1000)
               .setPlaneData(0, pixels.duplicate())
               .setPlaneStride(0, stride)
+              .setExternalDataInfo(seiBuffer)
               // Retain the shared immutable storage until the SDK releases this frame.
-              .setReleaseCallback { pixels.capacity() }
+              .setReleaseCallback { pixels.capacity(); seiBuffer.capacity() }
               .build()
             try {
               // A rejected frame does not prevent startup or the next scheduled push.
@@ -112,8 +119,16 @@ internal class XmaxImageVideoSource(private val gate: Any, private val directory
     }
   }
 
+  /** Empty task IDs pause delivery; repeating an ID preserves its frame sequence. */
+  fun setTask(taskID: String): Boolean = synchronized(gate) {
+    if (taskID.isNotEmpty() && timer == null) return false
+    task.set(taskID)
+    true
+  }
+
   /** Cancels future pushes before the runtime destroys the shared RTC engine. */
   fun stop() = synchronized(gate) {
+    task.set("")
     generation++
     timer?.cancel(false)
     timer = null

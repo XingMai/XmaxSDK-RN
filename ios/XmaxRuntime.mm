@@ -136,6 +136,10 @@ RCT_EXPORT_MODULE(XmaxRuntime)
                                reject:reject];
 }
 
+- (NSNumber *)setImageVideoTask:(NSString *)owner taskID:(NSString *)taskID {
+  return [self.implementation setImageVideoTask:owner taskID:taskID];
+}
+
 - (void)stopImageVideo:(NSString *)owner {
   [self.implementation stopImageVideo:owner];
 }

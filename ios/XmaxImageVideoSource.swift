@@ -16,6 +16,7 @@ final class XmaxImageVideoSource: @unchecked Sendable {
   /// Accessed only while holding gate; cancellation also invalidates queued callbacks.
   private var timer: DispatchSourceTimer?
   private var generation: UInt = 0
+  private var task = XmaxImageFrameTask()
 
   /// Uses the runtime's lock to coordinate startup, frame submission, and shutdown.
   init(gate: NSRecursiveLock) {
@@ -55,7 +56,9 @@ final class XmaxImageVideoSource: @unchecked Sendable {
             return
           }
 
-          let push = {
+          let push = { [weak self] in
+            guard let self, let seiData = self.task.nextData() else { return }
+
             let frame = ByteRTCVideoFrame()
             frame.format = Int32(ByteRTCVideoPixelFormat.cvPixelBuffer.rawValue)
             frame.textureBuf = pixels
@@ -63,12 +66,14 @@ final class XmaxImageVideoSource: @unchecked Sendable {
             frame.height = Int32(height)
             frame.rotation = ByteRTCVideoRotation(rawValue: 0)!
             frame.time = CMClockGetTime(CMClockGetHostTimeClock())
+            // RTC 3.58 names the frame's SEI payload extendedData.
+            frame.extendedData = seiData
 
             // Rejected frames do not prevent startup or the next scheduled push.
             _ = engine.pushExternalVideoFrame(frame)
           }
 
-          // Submit immediately; later frames use the same immutable pixels.
+          // Delivery waits for a generation task; the local preview uses RN Image.
           push()
 
           let interval = DispatchTimeInterval.nanoseconds(1_000_000_000 / fps)
@@ -103,9 +108,19 @@ final class XmaxImageVideoSource: @unchecked Sendable {
     }
   }
 
+  /// Empty task IDs pause delivery; repeating an ID preserves its frame sequence.
+  func setTask(_ taskID: String) -> Bool {
+    gate.xmaxWithLock {
+      guard taskID.isEmpty || timer != nil else { return false }
+      task.set(taskID)
+      return true
+    }
+  }
+
   /// Invalidates pending decoding and cancels delivery before the engine is destroyed.
   func stop() {
     gate.xmaxWithLock {
+      task.set("")
       generation &+= 1
       timer?.cancel()
       timer = nil

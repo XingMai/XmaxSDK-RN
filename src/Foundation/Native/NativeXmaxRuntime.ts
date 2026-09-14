@@ -37,6 +37,9 @@ export interface Spec extends TurboModule {
     fps: number,
   ): Promise<void>;
 
+  /** Sets the image frame task synchronously; an empty ID clears it. False means the source is unavailable. */
+  setImageVideoTask(owner: string, taskID: string): boolean;
+
   /** Stops native frame delivery before destroying the owner's RTC engine. */
   stopImageVideo(owner: string): void;
 

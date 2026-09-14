@@ -1,16 +1,18 @@
 /**
- * Accepts an exact task confirmation, optionally followed by a numeric frame
- * index.
+ * Matches task identity before query metadata, as on iOS. Also accepts the
+ * legacy suffix-free confirmation with a numeric frame index.
  */
 export function matchesTaskSEI(taskID: string, message: string): boolean {
-  const normalized = message.trim();
+  const currentID = taskID.split('?')[0]!;
+  const receivedID = message.trim().split('?')[0]!;
 
-  if (normalized === taskID) return true;
+  if (!currentID) return false;
+  if (receivedID === currentID) return true;
 
-  const prefix = `${taskID}&index=`;
+  const prefix = `${currentID}&index=`;
 
   return (
-    normalized.startsWith(prefix) &&
-    /^\d+$/.test(normalized.slice(prefix.length))
+    receivedID.startsWith(prefix) &&
+    /^\d+$/.test(receivedID.slice(prefix.length))
   );
 }

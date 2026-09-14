@@ -42,7 +42,7 @@ export class StreamController {
             (connection.botName && event.stream.userID !== connection.botName)
           )
             return;
-          // Exact task identity, optionally followed by the server's numeric frame index.
+          // Task identity excludes platform and frame-index query metadata.
           if (!matchesTaskSEI(taskID, event.message)) return;
 
           XmaxLogger.stream.info(
@@ -52,6 +52,7 @@ export class StreamController {
         });
 
         try {
+          this.rtc.beginImageTask(taskID);
           this.room.send('start', taskID, format, context);
         } catch (error) {
           reject(error);
@@ -62,7 +63,10 @@ export class StreamController {
       signal,
       30000,
       'Generation confirmation',
-    );
+    ).catch(error => {
+      this.rtc.endImageTask(taskID);
+      throw error;
+    });
   }
 
   updateGeneration(
@@ -74,6 +78,7 @@ export class StreamController {
   }
 
   stopGeneration(taskID: string): void {
+    this.rtc.endImageTask(taskID);
     if (this.room.connection) this.room.send('stop', taskID);
   }
 }

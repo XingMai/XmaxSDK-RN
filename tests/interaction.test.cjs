@@ -126,7 +126,7 @@ test('generation activates interaction only after SEI and stops it before networ
   let confirm;
   const events = [];
   const interaction = new InteractionController(() => {});
-  const generation = new XmaxRealtimeGenerationManager({ randomUUID: () => '00112233-4455-4677-8899-aabbccddeeff' }, {
+  const generation = new XmaxRealtimeGenerationManager({ runtime: { platform: 'ios' }, randomUUID: () => '00112233-4455-4677-8899-aabbccddeeff' }, {
     beginGeneration: () => new Promise(resolve => { confirm = resolve; }),
     updateGeneration: () => events.push('update'),
     stopGeneration: () => { assert.equal(interaction.isActive, false); events.push('stop'); },

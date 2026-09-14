@@ -379,6 +379,16 @@ public final class XmaxRuntimeImplementation: NSObject, @unchecked Sendable {
     }
   }
 
+  /// Updates frame metadata within the active owner's gate before JS sends its room command.
+  @objc(setImageVideoTask:taskID:)
+  public func setImageVideoTask(_ token: String, taskID: String) -> NSNumber {
+    gate.xmaxWithLock {
+      guard owner == token else { return false }
+      guard taskID.isEmpty || isActive(token).boolValue else { return false }
+      return NSNumber(value: imageVideo.setTask(taskID))
+    }
+  }
+
   /// Cancels frame delivery and pending image decoding only for the matching owner.
   /// Must run before the caller destroys the RTC engine; repeated calls are safe.
   @objc(stopImageVideo:)
