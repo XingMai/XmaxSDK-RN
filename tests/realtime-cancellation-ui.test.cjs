@@ -211,6 +211,7 @@ function screenFixture(t, options = {}) {
     '../realtime/TouchAnimationReference': { uploadTouchAnimationReference: options.prepareTouch },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
     '@xmaxai/react-native-sdk': {
+      XmaxLoggerOption: { all: 3 },
       XmaxClient: class { createRealtimeManager({ model }) { models.push(model); return manager; } createStorageManager() { return {}; } },
       XmaxRealtimeVideo: 'Video', RealtimeModel: { x2_0: 'x2.0' }, VideoContentMode: {},
       RealtimeConnectionState: { idle: 'idle', connecting: 'connecting', connected: 'connected',
@@ -596,7 +597,7 @@ test('storage selection, progress, safety errors and results follow the current 
   const storage = { file: null, busy: null, result: null, progress: null, error: null, safe: false };
   const { StorageScreen: Screen } = load('screens/StorageScreen.tsx', h.react, {
     'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
-    '@xmaxai/react-native-sdk': { RealtimeModel: { x2_0: 'x2.0', x2_0_pro: 'x2.0-pro' }, XmaxSDKInfo: { version: '1.0.0' } },
+    '@xmaxai/react-native-sdk': { RealtimeModel: require('../lib/commonjs/Service/Realtime/RealtimeTypes').RealtimeModel, XmaxSDKInfo: { version: '1.0.0' } },
     '@react-native-clipboard/clipboard': { setString() {} },
     'react-native-video': 'Video',
     '../storage/useStorage': { useStorage: () => storage, formatFileSize: () => '1 KB' },
@@ -717,7 +718,7 @@ test('all home feature entries require the current environment key before naviga
       return { assets: [{ uri: 'file:///fixture.jpg', type: 'image/jpeg' }] };
     } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
-    '@xmaxai/react-native-sdk': { XmaxEnvironment: { china: 'china', global: 'global' }, RealtimeModel: { x2_0: 'x2.0', x2_0_pro: 'x2.0-pro' }, XmaxSDKInfo: { version: '1.0.0' } },
+    '@xmaxai/react-native-sdk': { XmaxEnvironment: { china: 'china', global: 'global' }, RealtimeModel: require('../lib/commonjs/Service/Realtime/RealtimeTypes').RealtimeModel, XmaxSDKInfo: { version: '1.0.0' } },
     '../theme/tokens': { colors: {}, feedFont: value => value },
     '../components/FeedLanguageButton': { FeedLanguageButton: 'Language' },
     '../components/StorageFeatureCard': { StorageFeatureCard: 'Storage' },
@@ -726,8 +727,18 @@ test('all home feature entries require the current environment key before naviga
   });
   const configuration = { keys: { china: 'cn-fixture', global: '' }, environment: 'global', language: 'en', loaded: true };
   const props = { configuration, onCamera: (...args) => navigations.push(['camera', ...args]),
-    onImage: (...args) => navigations.push(['image', ...args]), onStorage: (...args) => navigations.push(['storage', ...args]) };
+    onImage: (...args) => navigations.push(['image', ...args]), onStorage: (...args) => navigations.push(['storage', ...args]),
+    onModelChange: model => { configuration.model = model; } };
   const draw = () => h.render(FeedScreen, props);
+  for (const language of ['en', 'zh-Hans']) {
+    locale = language;
+    const preview = find(draw(), node => node.props?.accessibilityRole === 'radio' && node.props?.accessibilityLabel === 'X2.1-PREVIEW');
+    assert(preview, 'Preview must have its own model entry');
+    assert(find(draw(), node => node.props?.children === 'RealtimeModel.x2_1_preview'));
+    preview.props.onPress();
+    assert.equal(configuration.model, 'x2.1-preview');
+    assert.equal(find(draw(), node => node.props?.accessibilityLabel === 'X2.1-PREVIEW').props.accessibilityState.checked, true);
+  }
   const press = target => {
     const tree = draw();
     find(tree, node => target === 'camera' || target === 'image'
@@ -784,17 +795,19 @@ test('image input opens on touch animation without automatically generating; cam
 });
 
 
-test('XLab initializes camera and image managers with the route-selected Pro model', async t => {
-  const camera = screenFixture(t, { model: 'x2.0-pro' });
-  const image = screenFixture(t, { model: 'x2.0-pro', fileURL: 'file:///image.jpg' });
+for (const model of ['x2.0-pro', 'x2.1-preview']) {
+test(`XLab initializes camera and image managers with the route-selected ${model}`, async t => {
+  const camera = screenFixture(t, { model });
+  const image = screenFixture(t, { model, fileURL: 'file:///image.jpg' });
   await tick();
-  assert.deepEqual(camera.models, ['x2.0-pro']);
-  assert.deepEqual(image.models, ['x2.0-pro']);
+  assert.deepEqual(camera.models, [model]);
+  assert.deepEqual(image.models, [model]);
   camera.props('Panel');
   image.props('Panel');
   assert.equal(camera.models.length, 1);
   assert.equal(image.models.length, 1);
 });
+}
 
 test('camera preview remains loading until Ready arrives through the state listener', async t => {
   const f = screenFixture(t, { preparing: true });
@@ -927,7 +940,7 @@ function storageErrorFixture(t, kind = 'image') {
     } },
     'react-native-blob-util': { fs: { dirs: { CacheDir: '/cache' },
       cp: async () => {}, stat: async () => ({ size: 12 }), unlink: async () => {} } },
-    '@xmaxai/react-native-sdk': { XmaxClient: class { createStorageManager() {
+    '@xmaxai/react-native-sdk': { XmaxLoggerOption: { all: 3 }, XmaxClient: class { createStorageManager() {
       return { uploadImage: failUpload('image'), uploadImageWithSafetyCheck: failUpload('safe'), uploadVideo: failUpload('video') };
     } } },
   });

@@ -5,6 +5,7 @@ import { launchImageLibrary } from 'react-native-image-picker';
 import Blob from 'react-native-blob-util';
 import {
   XmaxClient,
+  XmaxLoggerOption,
   type XmaxEnvironment,
   type XmaxUploadedFile,
   type StorageProgress,
@@ -212,6 +213,7 @@ export function useStorage(apiKey: string, environment: XmaxEnvironment) {
         const storage = new XmaxClient({
           apiKey,
           environment,
+          loggerOptions: XmaxLoggerOption.all,
         }).createStorageManager();
         const options = {
           fileURL: current.fileURL,

@@ -456,7 +456,7 @@ test('RTC encoding applies all upload settings to the platform-specific native c
     const rtc = new RtcManager();
     try {
       await rtc.open(new AbortController().signal);
-      for (const [encoderPreference, expected] of [[undefined, 3], ['auto', 3], ['maintainFramerate', 1], ['maintainQuality', 2]]) {
+      for (const [encoderPreference, expected] of [[undefined, 1], ['auto', 3], ['maintainFramerate', 1], ['maintainQuality', 2]]) {
         await rtc.configureEncoding({ width: 1024, height: 1920, fps: 30, encoderPreference }, 0, 4000);
         const config = engines.at(-1).encoding;
         assert.equal(config.width, 1024);

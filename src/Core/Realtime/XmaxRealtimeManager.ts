@@ -2,7 +2,7 @@ import { InteractionController } from '../../Media/Interaction/InteractionContro
 import { RtcStatsLogger } from '../../Foundation/RTC/RtcStatsLogger';
 import { AppState, type NativeEventSubscription } from 'react-native';
 import type { XmaxConfiguration } from '../XmaxConfiguration';
-import { apiBaseURLs } from '../XmaxConfiguration';
+import { realtimeAPIBaseURL } from '../XmaxConfiguration';
 import { RtcManager } from '../../Foundation/RTC/RtcManager';
 import { XmaxLogger } from '../../Foundation/Logging/XmaxLogger';
 import { ensureActive, waitFor } from '../../Foundation/Runtime/Async';
@@ -109,7 +109,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       new RealtimeSessionService(
         new ApiService(
           config.apiKey,
-          apiBaseURLs[config.environment],
+          realtimeAPIBaseURL(config.environment, options.model),
           this.rtc.runtime,
         ),
       ),

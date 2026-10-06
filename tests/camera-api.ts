@@ -26,6 +26,12 @@ export async function cameraContract(client: XmaxClient) {
   client.createMediaService(RealtimeModel.x2_0_pro);
   await pro.close();
 
+  const preview: XmaxRealtimeManaging = client.createRealtimeManager({
+    model: RealtimeModel.x2_1_preview,
+  });
+  client.createMediaService(RealtimeModel.x2_1_preview);
+  await preview.close();
+
   const manager: XmaxRealtimeManaging = client.createRealtimeManager({
     model: RealtimeModel.x2_0,
   });

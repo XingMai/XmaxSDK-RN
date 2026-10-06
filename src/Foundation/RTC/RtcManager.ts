@@ -432,12 +432,13 @@ export class RtcManager {
     config.frameRate = format.fps;
     config.minBitrate = minBitrate;
     config.maxBitrate = maxBitrate;
+    const encoderPreference =
+      format.encoderPreference ??
+      RealtimeVideoEncoderPreference.maintainFramerate;
     const preference =
-      format.encoderPreference ===
-      RealtimeVideoEncoderPreference.maintainFramerate
+      encoderPreference === RealtimeVideoEncoderPreference.maintainFramerate
         ? RTCVideoEncoderPreference.MAINTAIN_FRAMERATE
-        : format.encoderPreference ===
-          RealtimeVideoEncoderPreference.maintainQuality
+        : encoderPreference === RealtimeVideoEncoderPreference.maintainQuality
         ? RTCVideoEncoderPreference.MAINTAIN_QUALITY
         : RTCVideoEncoderPreference.BALANCE;
     // The pinned native-backed config exposes separate platform properties.

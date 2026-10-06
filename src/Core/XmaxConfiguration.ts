@@ -1,3 +1,5 @@
+import { RealtimeModel } from '../Service/Realtime/RealtimeTypes';
+
 /**
  * The regional environment used for Xmax API requests.
  */
@@ -42,3 +44,17 @@ export const apiBaseURLs = {
   [XmaxEnvironment.china]: 'https://cloud.xmax.22duck.cn/open/api/v1',
   [XmaxEnvironment.global]: 'https://api.xmax.cloud/open/api/v1',
 };
+
+/** Routes overseas Preview sessions to their rollout backend for their entire lifetime. */
+export function realtimeAPIBaseURL(
+  environment: XmaxEnvironment,
+  model: RealtimeModel,
+): string {
+  if (
+    environment === XmaxEnvironment.global &&
+    model === RealtimeModel.x2_1_preview
+  )
+    return 'https://api.xmax.ai/open/api/v1';
+
+  return apiBaseURLs[environment];
+}

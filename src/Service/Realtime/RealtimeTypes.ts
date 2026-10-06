@@ -8,6 +8,8 @@ export enum RealtimeModel {
   x2_0 = 'x2.0',
   /** Xmax X2.0 Pro realtime generation. */
   x2_0_pro = 'x2.0-pro',
+  /** Xmax X2.1 Preview realtime generation. */
+  x2_1_preview = 'x2.1-preview',
 }
 
 /** Input resolution constraints for a realtime model. */
@@ -51,6 +53,21 @@ export const realtimeModelSpecifications: Readonly<
     }),
   }),
   [RealtimeModel.x2_0_pro]: Object.freeze({
+    resolutionBuckets: Object.freeze([
+      Object.freeze({ width: 1024, height: 1920 }),
+      Object.freeze({ width: 1920, height: 1024 }),
+    ]),
+    minimumInputPixels: 600000,
+    maximumInputPixels: 2100000,
+    inputSizeAlignment: 32,
+    defaultFrameRate: 30,
+    defaultCameraVideoFormat: Object.freeze({
+      width: 1024,
+      height: 1920,
+      fps: 30,
+    }),
+  }),
+  [RealtimeModel.x2_1_preview]: Object.freeze({
     resolutionBuckets: Object.freeze([
       Object.freeze({ width: 1024, height: 1920 }),
       Object.freeze({ width: 1920, height: 1024 }),
@@ -135,9 +152,9 @@ export interface MediaSize {
 
 /** Upload encoding policy, matching the iOS SDK's preferences. */
 export enum RealtimeVideoEncoderPreference {
-  /** Balances frame rate and resolution. The default policy. */
+  /** Balances frame rate and resolution. */
   auto = 'auto',
-  /** Prioritizes frame rate. */
+  /** Prioritizes frame rate. The default policy. */
   maintainFramerate = 'maintainFramerate',
   /** Prioritizes resolution. */
   maintainQuality = 'maintainQuality',
@@ -156,7 +173,7 @@ export interface RealtimeVideoFormat extends MediaSize {
   /** Maximum kbps; omitted/null uses SDK defaults. Must be a positive integer. */
   readonly maximumBitrate?: number | null;
 
-  /** Defaults to auto. Preserved when the SDK resolves input dimensions. */
+  /** Defaults to maintainFramerate. Preserved when the SDK resolves input dimensions. */
   readonly encoderPreference?: RealtimeVideoEncoderPreference;
 }
 
@@ -250,8 +267,9 @@ export interface RealtimeOperationOptions {
 export interface CameraStreamOptions extends RealtimeOperationOptions {
   /**
    * Defaults to 832 x 1472 at 30 fps for x2.0,
-   * or 1024 x 1920 at 30 fps for x2.0-pro. Width and height must be positive even
-   * integers. Empty model buckets resize dimensions using the model's bounds;
+   * or 1024 x 1920 at 30 fps for x2.0-pro and x2.1-preview.
+   * Width and height must be positive even integers.
+   * Empty model buckets resize dimensions using the model's bounds;
    * nonempty buckets require an exact width/height match without resizing.
    */
   readonly videoFormat?: RealtimeVideoFormat;

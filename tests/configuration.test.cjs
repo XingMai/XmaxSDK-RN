@@ -8,7 +8,7 @@ const ts = require('typescript');
 const filename = resolve(__dirname, '../Example/XLab/src/configuration/ConfigurationStore.ts');
 const compiled = new Module(filename, module);
 compiled.require = name => name === '@xmaxai/react-native-sdk'
-  ? { XmaxEnvironment: { china: 'china', global: 'global' }, RealtimeModel: { x2_0: 'x2.0', x2_0_pro: 'x2.0-pro' } }
+  ? { XmaxEnvironment: { china: 'china', global: 'global' }, RealtimeModel: require('../lib/commonjs/Service/Realtime/RealtimeTypes').RealtimeModel }
   : require(name);
 compiled._compile(ts.transpileModule(readFileSync(filename, 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
@@ -251,12 +251,14 @@ test('model selection persists independently of keys and obsolete values fall ba
   const store = new ConfigurationStore(disk);
   await store.load();
   assert.equal(store.getSnapshot().model, 'x2.0');
-  store.selectModel('x2.0-pro');
-  await nextTurn();
-  const reloaded = new ConfigurationStore(disk);
-  await reloaded.load();
-  assert.equal(reloaded.getSnapshot().model, 'x2.0-pro');
-  assert.deepEqual(reloaded.getSnapshot().keys, { china: 'cn-fixture', global: 'global-fixture' });
+  for (const model of ['x2.0-pro', 'x2.1-preview']) {
+    store.selectModel(model);
+    await nextTurn();
+    const reloaded = new ConfigurationStore(disk);
+    await reloaded.load();
+    assert.equal(reloaded.getSnapshot().model, model);
+    assert.deepEqual(reloaded.getSnapshot().keys, { china: 'cn-fixture', global: 'global-fixture' });
+  }
   disk.values.set('model', 'obsolete-model');
   const fallback = new ConfigurationStore(disk);
   await fallback.load();

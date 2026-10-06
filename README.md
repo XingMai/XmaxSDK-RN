@@ -294,7 +294,12 @@ The view shows local preview until remote generation is ready, with touch
 interaction enabled by default.
 
 Choose `XmaxEnvironment.china` or `XmaxEnvironment.global` to match your API key;
-the default is `china`. Use `RealtimeModel.x2_0_pro` to select X2.0 Pro.
+the default is `china`. Use `RealtimeModel.x2_0_pro` to select X2.0 Pro,
+or `RealtimeModel.x2_1_preview` to select X2.1 Preview. Both models accept
+1024 × 1920 or 1920 × 1024 input, with a default of 1024 × 1920 at 30 fps.
+
+In the global environment, X2.1 Preview sessions use `api.xmax.ai`; other
+models and storage requests use `api.xmax.cloud`.
 Keep the client and manager stable for the screen's lifetime.
 
 <br>

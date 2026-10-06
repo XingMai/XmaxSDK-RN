@@ -203,7 +203,7 @@ export function FeedScreen({
                 Platform.OS === 'ios' ? 'RN / iOS' : 'RN / Android',
               ],
               [t('feed.os'), Platform.OS === 'ios' ? '15.1+' : '8.0+'],
-              [t('feed.latestModel'), 'X2.0-PRO'],
+              [t('feed.latestModel'), RealtimeModel.x2_1_preview.toUpperCase()],
             ].map(([label, value]) => (
               <View key={label} style={styles.metric}>
                 <FeedText
@@ -309,14 +309,12 @@ export function FeedScreen({
               )}
             </View>
             <View style={styles.divider} />
-            {Object.values(RealtimeModel).map(model => (
+            {Object.entries(RealtimeModel).map(([identifier, model]) => (
               <Pressable
                 key={model}
                 accessibilityRole="radio"
                 accessibilityState={{ checked: configuration.model === model }}
-                accessibilityLabel={
-                  model === RealtimeModel.x2_0_pro ? 'X2.0-PRO' : 'X2.0'
-                }
+                accessibilityLabel={model.toUpperCase()}
                 onPress={() => onModelChange(model)}
                 style={[
                   styles.model,
@@ -326,12 +324,10 @@ export function FeedScreen({
                 <FeedText style={styles.modelDiamond}>◆</FeedText>
                 <View style={styles.modelText}>
                   <FeedText style={styles.modelTitle}>
-                    {model === RealtimeModel.x2_0_pro ? 'X2.0-PRO' : 'X2.0'}
+                    {model.toUpperCase()}
                   </FeedText>
                   <FeedText style={styles.modelIdentifier}>
-                    {model === RealtimeModel.x2_0_pro
-                      ? 'RealtimeModel.x2_0_pro'
-                      : 'RealtimeModel.x2_0'}
+                    {`RealtimeModel.${identifier}`}
                   </FeedText>
                 </View>
                 {configuration.model === model && (

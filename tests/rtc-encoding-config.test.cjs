@@ -51,9 +51,9 @@ function fixture(entry, os) {
 
 for (const entry of ['commonjs', 'module']) {
   for (const os of ['ios', 'android']) {
-    test(`${entry}: ${os} encoder fields serialize explicit rates and balanced/frame/quality preferences`, async () => {
+    test(`${entry}: ${os} encoder defaults to frame rate priority and preserves explicit preferences`, async () => {
       const f = fixture(entry, os);
-      for (const [preference, expected] of [[undefined, 3], ['auto', 3], ['maintainFramerate', 1], ['maintainQuality', 2]]) {
+      for (const [preference, expected] of [[undefined, 1], ['auto', 3], ['maintainFramerate', 1], ['maintainQuality', 2]]) {
         const fields = await f.configure(preference);
         assert.equal(fields.width, 1024);
         assert.equal(fields.height, 1920);

@@ -20,6 +20,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   XmaxClient,
+  XmaxLoggerOption,
   XmaxRealtimeVideo,
   RealtimeModel,
   VideoContentMode,
@@ -182,7 +183,11 @@ export function RealtimeScreen({
       reason: null,
     });
 
-    const configuredClient = new XmaxClient({ apiKey, environment });
+    const configuredClient = new XmaxClient({
+      apiKey,
+      environment,
+      loggerOptions: XmaxLoggerOption.all,
+    });
     client.current = configuredClient;
     touchReference.current = null;
     const realtime = configuredClient.createRealtimeManager({

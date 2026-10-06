@@ -84,9 +84,9 @@ export class ConfigurationStore {
         this.publish({
           keys: { china: china ?? '', global: global ?? '' },
           model:
-            model === RealtimeModel.x2_0_pro
-              ? RealtimeModel.x2_0_pro
-              : RealtimeModel.x2_0,
+            Object.values(RealtimeModel).find(
+              supported => supported === model,
+            ) ?? RealtimeModel.x2_0,
           language:
             language === 'zh-Hans' || language === 'en' ? language : 'system',
           environment:

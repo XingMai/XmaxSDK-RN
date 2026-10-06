@@ -115,10 +115,11 @@ test('model dimensions match fixtures and the iOS pixel bounds', () => {
   });
 });
 
-test('nonempty model buckets require exact dimensions before rounding or resizing', () => {
+for (const model of ['x2.0-pro', 'x2.1-preview']) {
+test(`nonempty model buckets require exact dimensions before rounding or resizing (${model})`, () => {
   const { realtimeModelSpecifications } = require('../lib/commonjs/Service/Realtime/RealtimeTypes');
   assert.deepEqual(realtimeModelSpecifications['x2.0'].resolutionBuckets, []);
-  const pro = new MediaService('x2.0-pro');
+  const pro = new MediaService(model);
   for (const size of [{ width: 1024, height: 1920 }, { width: 1920, height: 1024 }]) {
     assert.deepEqual(pro.resolveModelInputSize(size), size);
   }
@@ -134,6 +135,7 @@ test('nonempty model buckets require exact dimensions before rounding or resizin
     });
   }
 });
+}
 
 test('RN task IDs carry their platform through room commands, tracks and SEI confirmation', () => {
   const { tracksEvent } = require('../lib/commonjs/Stream/Room/RoomEvent');
@@ -356,8 +358,9 @@ const {
 const config = { apiKey: 'test-key', environment: 'china', loggerOptions: 0 };
 const createManager = () => new XmaxRealtimeManager(config, { model: 'x2.0' });
 
-test('camera validates buckets before permission and preserves accepted dimensions and fps', async () => {
-  const manager = new XmaxRealtimeManager(config, { model: 'x2.0-pro' });
+for (const model of ['x2.0-pro', 'x2.1-preview']) {
+test(`camera validates buckets before permission and preserves accepted dimensions and fps (${model})`, async () => {
+  const manager = new XmaxRealtimeManager(config, { model });
   const rtc = FakeRtc.instances.at(-1);
   try {
     for (const videoFormat of [
@@ -399,9 +402,11 @@ test('camera validates buckets before permission and preserves accepted dimensio
     await flexible.close();
   }
 });
+}
 
-test('image buckets reject unsupported explicit and source sizes before preparation', async t => {
-  const manager = new XmaxRealtimeManager(config, { model: 'x2.0-pro' });
+for (const model of ['x2.0-pro', 'x2.1-preview']) {
+test(`image buckets reject unsupported explicit and source sizes before preparation (${model})`, async t => {
+  const manager = new XmaxRealtimeManager(config, { model });
   const images = FakeImages.instances.at(-1), rtc = FakeRtc.instances.at(-1);
   try {
     for (const videoFormat of [
@@ -432,8 +437,9 @@ test('image buckets reject unsupported explicit and source sizes before preparat
     await manager.close();
   }
 });
+}
 
-test('client accepts pro and sends its model value to the session API', async t => {
+test('client accepts Pro and Preview and sends their model values to the session API', async t => {
   const configured = [], nativeLogs = [];
   // Storage native modules are unrelated to realtime model selection.
   mock.module(require.resolve('../lib/commonjs/Foundation/Storage/StorageManager.js'), {
@@ -458,27 +464,64 @@ test('client accepts pro and sends its model value to the session API', async t 
     if (init.method === 'POST') requests.push(JSON.parse(init.body));
     return response(init.method === 'POST' ? sessionPayload : {});
   });
-  const manager = client.createRealtimeManager({ model: RealtimeModel.x2_0_pro });
-  try {
-    const media = client.createMediaService(RealtimeModel.x2_0_pro);
-    assert.equal(media.model, 'x2.0-pro');
-    assert.deepEqual(media.resolveModelInputSize({ width: 1024, height: 1920 }), {
-      width: 1024, height: 1920,
-    });
-    assert.equal(client.createMediaService().model, 'x2.0');
-    const local = await manager.createLocalCameraStream();
-    await manager.connect({ localStream: local });
-    assert.deepEqual(requests, [{ model: 'x2.0-pro' }]);
-    assert.throws(() => client.createRealtimeManager({ model: 'unknown' }), {
-      code: 'INVALID_CONFIGURATION',
-    });
-    assert.throws(() => client.createMediaService('unknown'), {
-      code: 'INVALID_CONFIGURATION',
-    });
-  } finally {
-    await manager.close();
+  for (const model of [RealtimeModel.x2_0_pro, RealtimeModel.x2_1_preview]) {
+    const manager = client.createRealtimeManager({ model });
+    try {
+      const media = client.createMediaService(model);
+      assert.equal(media.model, model);
+      assert.deepEqual(media.resolveModelInputSize({ width: 1024, height: 1920 }), {
+        width: 1024, height: 1920,
+      });
+      assert.equal(client.createMediaService().model, 'x2.0');
+      const local = await manager.createLocalCameraStream();
+      await manager.connect({ localStream: local });
+      assert.deepEqual(requests.at(-1), { model });
+      assert.throws(() => client.createRealtimeManager({ model: 'unknown' }), {
+        code: 'INVALID_CONFIGURATION',
+      });
+      assert.throws(() => client.createMediaService('unknown'), {
+        code: 'INVALID_CONFIGURATION',
+      });
+    } finally {
+      await manager.close();
+    }
   }
+  assert.deepEqual(requests, [{ model: 'x2.0-pro' }, { model: 'x2.1-preview' }]);
 });
+
+for (const environment of ['china', 'global']) {
+  for (const model of ['x2.0', 'x2.0-pro', 'x2.1-preview']) {
+    test(`${environment} ${model} keeps create, heartbeat and close on its session backend`, async t => {
+      const requests = [];
+      t.mock.timers.enable({ apis: ['setTimeout'] });
+      t.mock.method(globalThis, 'fetch', async (url, init) => {
+        requests.push({ method: init.method, url, body: init.body });
+        return response(init.method === 'DELETE' ? {} : sessionPayload);
+      });
+      const manager = new XmaxRealtimeManager({ ...config, environment }, { model });
+      try {
+        const localStream = await manager.createLocalCameraStream();
+        await manager.connect({ localStream });
+        t.mock.timers.tick(10000);
+        await nextTurn();
+      } finally {
+        await manager.close();
+      }
+      const base = environment === 'china'
+        ? 'https://cloud.xmax.22duck.cn/open/api/v1'
+        : model === 'x2.1-preview'
+          ? 'https://api.xmax.ai/open/api/v1'
+          : 'https://api.xmax.cloud/open/api/v1';
+      assert.deepEqual(requests, [
+        { method: 'POST', url: `${base}/session`, body: JSON.stringify({ model }) },
+        { method: 'PUT', url: `${base}/session/session-1/heartbeat`, body: undefined },
+        { method: 'DELETE', url: `${base}/session/session-1`, body: undefined },
+      ]);
+      const { apiBaseURLs } = require('../lib/commonjs/Core/XmaxConfiguration');
+      assert.equal(apiBaseURLs.global, 'https://api.xmax.cloud/open/api/v1', 'Model selection must not change the shared storage backend');
+    });
+  }
+}
 
 // Fetch is replaced only within each sequential test. No live service is contacted.
 for (const honorsCancellation of [false, true]) {
