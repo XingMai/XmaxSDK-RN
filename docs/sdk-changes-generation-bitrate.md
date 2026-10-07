@@ -4,7 +4,7 @@
 
 | 能力 | 公开 API | 生效范围 |
 | --- | --- | --- |
-| 生成下行码率 | `RealtimeContext.minimumBitrate` / `maximumBitrate` | 生成 `start` 事件 |
+| 生成下行码率 | `RealtimeContext.minimumBitrate` / `maximumBitrate` | 生成 `start` 事件（**当前仅 x2.1-preview 模型有效**） |
 
 ---
 
@@ -31,6 +31,8 @@ export interface RealtimeContext {
 ```
 
 随 `startGeneration({ context })` 传入。
+
+> **模型限制：当前仅 `x2.1-preview` 模型的生成下行码率生效。** 其他模型（如 x2.0）即使下发 `min_bitrate` / `max_bitrate`，服务端也会忽略，按默认值处理。
 
 ## 3. 校验规则
 
@@ -114,7 +116,7 @@ const local = await realtime.createLocalCameraStream({
   },
 });
 
-// 下行：随 start 事件下发
+// 下行：随 start 事件下发（当前仅 x2.1-preview 模型生效）
 await realtime.startGeneration({
   localStream: local,
   context: {
