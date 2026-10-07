@@ -1,5 +1,3 @@
-import { useLocalization } from '../localization/LocalizationProvider';
-import { configurationForLocale } from '../configuration/LocalizedConfiguration';
 import { createContext, useContext } from 'react';
 import { StyleSheet } from 'react-native';
 import { DarkTheme, NavigationContainer } from '@react-navigation/native';
@@ -7,10 +5,18 @@ import {
   createNativeStackNavigator,
   type NativeStackScreenProps,
 } from '@react-navigation/native-stack';
-import type { RealtimeModel, XmaxEnvironment } from '@xmaxai/react-native-sdk';
+import type { RealtimeModel } from '@xmaxai/react-native-sdk';
 import type {
+  BitrateOverride,
   ConfigurationStore,
   SavedConfiguration,
+  XLabApiEndpoint,
+} from '../configuration/ConfigurationStore';
+import {
+  apiBaseURLForEndpoint,
+  environmentForEndpoint,
+  parseBitrateOverride,
+  parseGenerationBitrate,
 } from '../configuration/ConfigurationStore';
 import { FeedScreen } from '../screens/FeedScreen';
 import { CameraScreen } from '../screens/CameraScreen';
@@ -21,16 +27,47 @@ import { useRealtimeEntryReady } from './useRealtimeEntryReady';
 /** Navigation state contains input selection, while credentials stay in context. */
 export type XLabStackParamList = {
   Feed: undefined;
-  Camera: { environment: XmaxEnvironment; model: RealtimeModel };
-  Image: {
-    environment: XmaxEnvironment;
+  Camera: {
+    endpoint: XLabApiEndpoint;
     model: RealtimeModel;
+    bitrate: BitrateOverride | null;
+    generationBitrate: BitrateOverride | null;
+  };
+  Image: {
+    endpoint: XLabApiEndpoint;
+    model: RealtimeModel;
+    bitrate: BitrateOverride | null;
+    generationBitrate: BitrateOverride | null;
     fileURL: string;
     customTrajectory: boolean;
     contentType: string | undefined;
   };
-  Storage: { environment: XmaxEnvironment };
+  Storage: { endpoint: XLabApiEndpoint };
 };
+
+/** Route params carry parsed values; the feed blocks invalid input before entry. */
+function bitrateParam(
+  configuration: SavedConfiguration,
+): BitrateOverride | null {
+  const parsed = parseBitrateOverride(
+    configuration.minBitrate,
+    configuration.maxBitrate,
+  );
+
+  return parsed === 'invalid' ? null : parsed;
+}
+
+/** Downlink limits captured for the generation start event. */
+function generationBitrateParam(
+  configuration: SavedConfiguration,
+): BitrateOverride | null {
+  const parsed = parseGenerationBitrate(
+    configuration.downMinBitrate,
+    configuration.downMaxBitrate,
+  );
+
+  return parsed === 'invalid' ? null : parsed;
+}
 
 interface ConfigurationContextValue {
   configuration: SavedConfiguration;
@@ -54,45 +91,43 @@ function useXLabConfiguration() {
 function FeedRoute({
   navigation,
 }: NativeStackScreenProps<XLabStackParamList, 'Feed'>) {
-  const { configuration: saved, store } = useXLabConfiguration();
-  const { locale } = useLocalization();
-  const configuration = configurationForLocale(saved, locale);
+  const { configuration, store } = useXLabConfiguration();
 
   return (
     <FeedScreen
       configuration={configuration}
-      onAPIKeyChange={value => store.setKey(configuration.environment, value)}
+      onAPIKeyChange={value => store.setKey(configuration.endpoint, value)}
+      onEndpointChange={value => store.selectEndpoint(value)}
+      onBitrateChange={(field, value) => store.setBitrate(field, value)}
       onLanguageChange={value => store.selectLanguage(value)}
       onModelChange={value => store.selectModel(value)}
       onRetrySave={() => {
         void store.flush();
       }}
-      onCamera={(_apiKey, environment) => {
+      onCamera={(_apiKey, endpoint) => {
         if (navigation.isFocused())
           navigation.navigate('Camera', {
-            environment,
+            endpoint,
             model: configuration.model,
+            bitrate: bitrateParam(configuration),
+            generationBitrate: generationBitrateParam(configuration),
           });
       }}
-      onImage={(
-        _apiKey,
-        environment,
-        fileURL,
-        customTrajectory,
-        contentType,
-      ) => {
+      onImage={(_apiKey, endpoint, fileURL, customTrajectory, contentType) => {
         if (navigation.isFocused())
           navigation.navigate('Image', {
-            environment,
+            endpoint,
             model: configuration.model,
+            bitrate: bitrateParam(configuration),
+            generationBitrate: generationBitrateParam(configuration),
             fileURL,
             customTrajectory,
             contentType,
           });
       }}
-      onStorage={(_apiKey, environment) => {
+      onStorage={(_apiKey, endpoint) => {
         if (navigation.isFocused())
-          navigation.navigate('Storage', { environment });
+          navigation.navigate('Storage', { endpoint });
       }}
     />
   );
@@ -109,8 +144,11 @@ function CameraRoute({
     <CameraScreen
       entryReady={entryReady}
       model={route.params.model}
-      apiKey={configuration.keys[route.params.environment].trim()}
-      environment={route.params.environment}
+      bitrate={route.params.bitrate}
+      generationBitrate={route.params.generationBitrate}
+      apiKey={configuration.keys[route.params.endpoint].trim()}
+      environment={environmentForEndpoint(route.params.endpoint)}
+      baseURL={apiBaseURLForEndpoint(route.params.endpoint)}
       onBack={navigation.goBack}
     />
   );
@@ -127,8 +165,11 @@ function ImageRoute({
     <RealtimeScreen
       entryReady={entryReady}
       model={route.params.model}
-      apiKey={configuration.keys[route.params.environment].trim()}
-      environment={route.params.environment}
+      bitrate={route.params.bitrate}
+      generationBitrate={route.params.generationBitrate}
+      apiKey={configuration.keys[route.params.endpoint].trim()}
+      environment={environmentForEndpoint(route.params.endpoint)}
+      baseURL={apiBaseURLForEndpoint(route.params.endpoint)}
       fileURL={route.params.fileURL}
       customTrajectory={route.params.customTrajectory}
       imageContentType={route.params.contentType}
@@ -145,8 +186,9 @@ function StorageRoute({
 
   return (
     <StorageScreen
-      apiKey={configuration.keys[route.params.environment].trim()}
-      environment={route.params.environment}
+      apiKey={configuration.keys[route.params.endpoint].trim()}
+      environment={environmentForEndpoint(route.params.endpoint)}
+      baseURL={apiBaseURLForEndpoint(route.params.endpoint)}
       onBack={navigation.goBack}
     />
   );

@@ -891,6 +891,55 @@ test('image pipeline uses prepared dimensions/path, no camera permissions, and c
   await manager.close();
 });
 
+test('downlink bitrate limits ride on the start event only and are validated', async t => {
+  t.mock.method(globalThis, 'fetch', async (_url, init) =>
+    response(init.method === 'POST' ? sessionPayload : {}),
+  );
+  const manager = createManager();
+  const local = await manager.createLocalCameraStream();
+  const rtc = FakeRtc.instances.at(-1);
+  await manager.connect({ localStream: local });
+  const generation = manager.startGeneration({
+    context: { prompt: 'animate', minimumBitrate: 3000, maximumBitrate: 8000 },
+  });
+  await nextTurn();
+  const start = rtc.packets.find(p => p.event === 'start');
+  assert.equal(start.params.min_bitrate, 3000);
+  assert.equal(start.params.max_bitrate, 8000);
+  rtc.emit({ type: 'sei', stream: { roomID: 'room-1', userID: 'bot-1' }, message: start.uid });
+  await generation;
+  await manager.startGeneration({
+    context: { prompt: 'next', minimumBitrate: 1000, maximumBitrate: 2000 },
+  });
+  const change = rtc.packets.find(p => p.event === 'change_condition');
+  assert.equal(change.params.min_bitrate, undefined, 'Context updates must not re-send downlink limits');
+  assert.equal(change.params.max_bitrate, undefined);
+  await manager.startGeneration({
+    context: { prompt: 'plain' },
+  });
+  const cleared = rtc.packets.filter(p => p.event === 'change_condition').at(-1);
+  assert.equal(cleared.params.min_bitrate, undefined);
+  await manager.close();
+});
+
+test('invalid downlink bitrate rejects before any start packet is sent', async () => {
+  const manager = createManager();
+  const local = await manager.createLocalCameraStream();
+  const rtc = FakeRtc.instances.at(-1);
+  for (const context of [
+    { prompt: 'x', minimumBitrate: 99 },
+    { prompt: 'x', maximumBitrate: 10001 },
+    { prompt: 'x', minimumBitrate: 3000, maximumBitrate: 2000 },
+    { prompt: 'x', minimumBitrate: 2000.5 },
+  ])
+    await assert.rejects(
+      manager.startGeneration({ localStream: local, context }),
+      { code: 'INVALID_CONFIGURATION' },
+    );
+  assert.equal(rtc.packets.find(p => p.event === 'start'), undefined);
+  await manager.close();
+});
+
 test('close during image preparation removes late file and never starts image RTC', async t => {
   const manager = createManager();
   const images = FakeImages.instances.at(-1), rtc = FakeRtc.instances.at(-1);

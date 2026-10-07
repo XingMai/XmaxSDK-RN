@@ -34,13 +34,16 @@ export function StorageScreen({
   onBack,
   apiKey,
   environment,
+  baseURL,
 }: {
   onBack: () => void;
   apiKey: string;
   environment: XmaxEnvironment;
+  /** Explicit API backend captured when entering the page. */
+  baseURL?: string | undefined;
 }) {
   const { t } = useLocalization();
-  const storage = useStorage(apiKey, environment);
+  const storage = useStorage(apiKey, environment, baseURL);
   const { file, busy, result, progress, error, safe } = storage;
   const [copied, setCopied] = useState(false);
   const [foreground, setForeground] = useState(

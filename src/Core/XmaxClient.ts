@@ -49,12 +49,14 @@ export class XmaxClient {
 
     const environment = configuration.environment ?? XmaxEnvironment.china;
     const loggerOptions = configuration.loggerOptions ?? 0;
+    const trimmedBaseURL = configuration.baseURL?.trim() ?? '';
 
     if (
       !Object.values(XmaxEnvironment).includes(environment) ||
       !Number.isInteger(loggerOptions) ||
       loggerOptions < 0 ||
-      (loggerOptions & ~3) !== 0
+      (loggerOptions & ~3) !== 0 ||
+      (trimmedBaseURL !== '' && !/^https?:\/\/\S+$/.test(trimmedBaseURL))
     )
       throw invalid('Invalid Xmax configuration');
 
@@ -62,6 +64,7 @@ export class XmaxClient {
       apiKey: configuration.apiKey.trim(),
       environment,
       loggerOptions,
+      baseURL: trimmedBaseURL ? trimmedBaseURL.replace(/\/+$/, '') : null,
     });
 
     NativeRuntime.configureLogging(loggerOptions);
@@ -102,7 +105,8 @@ export class XmaxClient {
       new StorageService(
         new ApiService(
           this.configuration.apiKey,
-          apiBaseURLs[this.configuration.environment],
+          this.configuration.baseURL ??
+            apiBaseURLs[this.configuration.environment],
           runtime,
         ),
         new StorageManager(),

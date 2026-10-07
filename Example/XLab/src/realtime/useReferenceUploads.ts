@@ -58,6 +58,7 @@ async function prepareReferenceFile(
 export function useReferenceUploads(
   apiKey: string,
   environment: XmaxEnvironment,
+  baseURL: string | undefined,
   onUpdate: (id: string, update: ReferenceUploadUpdate) => void,
 ) {
   const { t } = useLocalization();
@@ -95,6 +96,7 @@ export function useReferenceUploads(
         const storage = new XmaxClient({
           apiKey,
           environment,
+          baseURL: baseURL ?? null,
           loggerOptions: XmaxLoggerOption.all,
         }).createStorageManager();
 

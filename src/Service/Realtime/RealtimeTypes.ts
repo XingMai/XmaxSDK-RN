@@ -191,6 +191,14 @@ export interface RealtimeContext {
    * new context.
    */
   readonly referencePath?: string | null;
+
+  /**
+   * Downlink encoder limits in Kbps within [100, 10000], sent with the start
+   * event only. Omitted or null uses server defaults; later context updates
+   * keep the task's current values. Minimum must not exceed maximum.
+   */
+  readonly minimumBitrate?: number | null;
+  readonly maximumBitrate?: number | null;
 }
 
 /** Why a realtime lifecycle ended; new operations clear the previous reason. */

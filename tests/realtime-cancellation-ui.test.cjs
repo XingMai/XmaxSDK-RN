@@ -125,7 +125,7 @@ function panelFixture(t, initialCategoryID) {
     './RealtimeReferenceList': { RealtimeReferenceList: 'ReferenceList' },
     './ReferenceThumbnail': { ReferenceThumbnail: 'Thumbnail' },
     './ReferenceUploadOverlay': { ReferenceUploadOverlay: 'UploadOverlay' },
-    './useReferenceUploads': { useReferenceUploads: (_key, _env, callback) => { update = callback; return {}; } },
+    './useReferenceUploads': { useReferenceUploads: (_key, _env, _baseURL, callback) => { update = callback; return {}; } },
   });
   const props = { initialCategoryID, bottomInset: 0, prompt: '', canSubmit: true, connected: false,
     generating: false, generationRequested: false, onSubmit: (value, failure) => { submitted.push(value); failures.push(failure); },
@@ -661,17 +661,19 @@ test('storage selection, progress, safety errors and results follow the current 
 });
 
 
-test('locale selects the API environment and key slot for every feature route', t => {
-  t.after(() => { locale = 'zh-Hans'; });
+test('endpoint selection drives credentials and backend routing for every feature route', () => {
   const configuration = { keys: { china: 'cn-fixture', global: 'global-fixture' },
-    environment: 'china', model: 'x2.0-pro', language: 'en', loaded: true };
+    endpoint: 'global', model: 'x2.0', language: 'en', loaded: true,
+    minBitrate: '', maxBitrate: '', downMinBitrate: '', downMaxBitrate: '' };
   const writes = [], routes = [];
-  const context = { configuration, store: { setKey: (...args) => writes.push(args), selectLanguage() {}, selectModel: model => { configuration.model = model; } } };
+  const context = { configuration, store: { setKey: (...args) => writes.push(args),
+    selectEndpoint: endpoint => { configuration.endpoint = endpoint; },
+    selectLanguage() {}, selectModel: model => { configuration.model = model; } } };
   const react = { createContext: () => ({ Provider: 'Provider' }), useContext: () => context };
-  const sdk = { XmaxEnvironment: { china: 'china', global: 'global' } };
-  const localized = load('configuration/LocalizedConfiguration.ts', {}, { '@xmaxai/react-native-sdk': sdk });
+  const sdk = { XmaxEnvironment: { china: 'china', global: 'global' },
+    RealtimeModel: require('../lib/commonjs/Service/Realtime/RealtimeTypes').RealtimeModel };
   const { XLabNavigator } = load('navigation/XLabNavigator.tsx', react, {
-    '../configuration/LocalizedConfiguration': localized,
+    '../configuration/ConfigurationStore': load('configuration/ConfigurationStore.ts', {}, { '@xmaxai/react-native-sdk': sdk }),
     '@react-navigation/native': { NavigationContainer: 'Navigation', DarkTheme: {} },
     '@react-navigation/native-stack': { createNativeStackNavigator: () => ({ Navigator: 'Navigator', Screen: 'Screen' }) },
     '../screens/FeedScreen': { FeedScreen: 'Feed' },
@@ -683,36 +685,35 @@ test('locale selects the API environment and key slot for every feature route', 
   const tree = XLabNavigator(context);
   const routeComponent = name => find(tree, node => node.props?.name === name).props.component;
   const navigation = { isFocused: () => true, navigate: (...args) => routes.push(args) };
-  locale = 'en';
-  const english = routeComponent('Feed')({ navigation }).props;
-  assert.equal(english.configuration.environment, 'global', 'Old persisted China environment must not override English UI');
-  english.onAPIKeyChange('new-global');
+  const feed = routeComponent('Feed')({ navigation }).props;
+  assert.equal(feed.configuration.endpoint, 'global');
+  feed.onAPIKeyChange('new-global');
   assert.deepEqual(writes.at(-1), ['global', 'new-global']);
-  english.onModelChange('x2.0');
-  assert.equal(configuration.model, 'x2.0');
-  english.onModelChange('x2.0-pro');
-  english.onCamera('global-fixture', english.configuration.environment);
-  assert.deepEqual(routes.at(-1), ['Camera', { environment: 'global', model: 'x2.0-pro' }]);
+  feed.onModelChange('x2.1-preview');
+  assert.equal(configuration.model, 'x2.1-preview');
+  feed.onModelChange('x2.0');
+  feed.onCamera('global-fixture', 'global');
+  assert.deepEqual(routes.at(-1), ['Camera', { endpoint: 'global', model: 'x2.0', bitrate: null, generationBitrate: null }]);
   for (const name of ['Camera', 'Image', 'Storage']) {
-    const props = routeComponent(name)({ route: { params: { environment: 'global', model: 'x2.0-pro' } }, navigation }).props;
+    const props = routeComponent(name)({ route: { params: { endpoint: 'global', model: 'x2.0', bitrate: null, generationBitrate: null } }, navigation }).props;
     if (name !== 'Storage') {
-      assert.equal(props.model, 'x2.0-pro');
+      assert.equal(props.model, 'x2.0');
       assert.equal(props.entryReady, false, 'Media routes forward native transition readiness');
     }
     assert.equal(props.environment, 'global');
+    assert.equal(props.baseURL, 'https://api.xmax.ai/open/api/v1');
     assert.equal(props.apiKey, 'global-fixture');
   }
-  locale = 'zh-Hans';
-  const chinese = routeComponent('Feed')({ navigation }).props;
-  assert.equal(chinese.configuration.environment, 'china');
-  chinese.onAPIKeyChange('new-cn');
-  assert.deepEqual(writes.at(-1), ['china', 'new-cn']);
-  assert.equal(routeComponent('Storage')({ route: { params: { environment: 'global' } }, navigation }).props.apiKey,
-    'global-fixture', 'An existing route must not switch credentials mid-session');
+  feed.onEndpointChange('china');
+  assert.equal(configuration.endpoint, 'china');
+  const china = routeComponent('Storage')({ route: { params: { endpoint: 'china' } }, navigation }).props;
+  assert.equal(china.environment, 'china');
+  assert.equal(china.baseURL, 'https://api.xmaxai.com/open/api/v1');
+  assert.equal(china.apiKey, 'cn-fixture');
   configuration.keys.global = '';
-  locale = 'en';
+  feed.onEndpointChange('global');
   const empty = routeComponent('Feed')({ navigation }).props.configuration;
-  assert.equal(empty.keys[empty.environment], '', 'A missing overseas key must never fall back to the China key');
+  assert.equal(empty.keys[empty.endpoint], '', 'A missing overseas key must never fall back to the China key');
 });
 
 test('the reference picker uses the iOS artwork for each resolved locale', t => {
@@ -729,28 +730,33 @@ test('the reference picker uses the iOS artwork for each resolved locale', t => 
   assert.equal(find(draw(), node => node.type === 'Image').props.source, '../assets/realtime/realtime_add_reference_en.png');
 });
 
-test('all home feature entries require the current environment key before navigation or image picking', async t => {
+test('all home feature entries require the current endpoint key before navigation or image picking', async t => {
   const h = hooks(), alerts = [], navigations = [];
   let picks = 0;
   const originalAlert = native.Alert;
   native.Alert = { alert: (...args) => alerts.push(args) };
   t.after(() => { native.Alert = originalAlert; locale = 'zh-Hans'; h.dispose(); });
+  const sdk = { XmaxEnvironment: { china: 'china', global: 'global' }, RealtimeModel: require('../lib/commonjs/Service/Realtime/RealtimeTypes').RealtimeModel, XmaxSDKInfo: { version: '1.0.0' } };
   const { FeedScreen } = load('screens/FeedScreen.tsx', h.react, {
     'react-native-image-picker': { launchImageLibrary: async () => {
       picks++;
       return { assets: [{ uri: 'file:///fixture.jpg', type: 'image/jpeg' }] };
     } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
-    '@xmaxai/react-native-sdk': { XmaxEnvironment: { china: 'china', global: 'global' }, RealtimeModel: require('../lib/commonjs/Service/Realtime/RealtimeTypes').RealtimeModel, XmaxSDKInfo: { version: '1.0.0' } },
+    '@xmaxai/react-native-sdk': sdk,
+    '../configuration/ConfigurationStore': load('configuration/ConfigurationStore.ts', {}, { '@xmaxai/react-native-sdk': sdk }),
     '../theme/tokens': { colors: {}, feedFont: value => value },
     '../components/FeedLanguageButton': { FeedLanguageButton: 'Language' },
     '../components/StorageFeatureCard': { StorageFeatureCard: 'Storage' },
     '../components/FeedPipelineCard': { FeedPipelineCard: 'Pipeline' },
     '../components/FeedFeatureCard': { FeedFeatureCard: 'Feature' },
   });
-  const configuration = { keys: { china: 'cn-fixture', global: '' }, environment: 'global', language: 'en', loaded: true };
+  const configuration = { keys: { china: 'cn-fixture', global: '' }, endpoint: 'global', language: 'en', loaded: true,
+    minBitrate: '', maxBitrate: '', downMinBitrate: '', downMaxBitrate: '' };
   const props = { configuration, onCamera: (...args) => navigations.push(['camera', ...args]),
     onImage: (...args) => navigations.push(['image', ...args]), onStorage: (...args) => navigations.push(['storage', ...args]),
+    onEndpointChange: endpoint => { configuration.endpoint = endpoint; },
+    onBitrateChange: (field, value) => { configuration[field] = value; },
     onModelChange: model => { configuration.model = model; } };
   const draw = () => h.render(FeedScreen, props);
   for (const language of ['en', 'zh-Hans']) {
@@ -758,6 +764,7 @@ test('all home feature entries require the current environment key before naviga
     const preview = find(draw(), node => node.props?.accessibilityRole === 'radio' && node.props?.accessibilityLabel === 'X2.1-PREVIEW');
     assert(preview, 'Preview must have its own model entry');
     assert(find(draw(), node => node.props?.children === 'RealtimeModel.x2_1_preview'));
+    assert(!find(draw(), node => node.props?.accessibilityLabel === 'X2.0-PRO'), 'X2.0 Pro must not appear in the model list');
     preview.props.onPress();
     assert.equal(configuration.model, 'x2.1-preview');
     assert.equal(find(draw(), node => node.props?.accessibilityLabel === 'X2.1-PREVIEW').props.accessibilityState.checked, true);
@@ -778,11 +785,20 @@ test('all home feature entries require the current environment key before naviga
   assert.equal(picks, 0, 'Missing keys must be rejected before photo permissions or picker UI');
   assert.deepEqual(navigations, [], 'A saved China key cannot authorize overseas entry');
   locale = 'zh-Hans';
-  configuration.environment = 'china';
+  configuration.endpoint = 'china';
   configuration.keys.china = '';
   press('camera');
   assert.equal(alerts.at(-1)[1], '请先输入 API Key');
   configuration.keys.china = '  cn-fixture  ';
+  configuration.minBitrate = '2000';
+  press('camera');
+  assert.equal(alerts.at(-1)[1], '请同时填写整数最小/最大码率，且最小不大于最大。', 'A lone bitrate field must block entry');
+  configuration.maxBitrate = '4000';
+  configuration.downMinBitrate = '99';
+  configuration.downMaxBitrate = '6000';
+  press('camera');
+  assert.equal(alerts.at(-1)[1], '下行码率需为 100–10000 的整数，且最小不大于最大。', 'Out-of-range downlink bitrate must block entry');
+  configuration.downMinBitrate = '2000';
   press('camera');
   press('Storage');
   press('image');

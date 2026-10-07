@@ -33,6 +33,13 @@ export interface XmaxConfiguration {
   readonly environment?: XmaxEnvironment;
 
   /**
+   * Overrides the API base URL for every service created by the client,
+   * bypassing the environment-derived endpoints. Must be an absolute http(s)
+   * URL; a null or empty value keeps environment routing.
+   */
+  readonly baseURL?: string | null;
+
+  /**
    * A bitmask of XmaxLoggerOption values. Defaults to 0 (logging disabled).
    * Configures SDK-wide logging; the most recently created client controls
    * existing and future services, matching the iOS SDK.
