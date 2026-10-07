@@ -15,6 +15,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -75,6 +76,8 @@ export function RealtimeScreen({
 }) {
   const { t } = useLocalization();
   const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
+  const [landscapeLayout, setLandscapeLayout] = useState<boolean | null>(null);
   const trajectoryRenderer = useMemo(
     () => (customTrajectory ? new XLabTrajectoryRenderer() : null),
     [customTrajectory],
@@ -461,14 +464,22 @@ export function RealtimeScreen({
   const previewTop = fileURL ? insets.top + 68 : 0;
 
   return (
-    <View style={styles.page}>
+    <View
+      style={styles.page}
+      onLayout={({ nativeEvent: { layout } }) => {
+        if (layout.width > 0 && layout.height > 0)
+          setLandscapeLayout(layout.width > layout.height);
+      }}
+    >
       <View style={[styles.preview, { marginTop: previewTop }]}>
         <XmaxRealtimeVideo
           trajectoryRenderer={trajectoryRenderer}
           localTrack={localTrack}
           remoteTrack={remoteTrack}
           videoContentMode={
-            fileURL ? VideoContentMode.fit : VideoContentMode.fill
+            fileURL || (landscapeLayout ?? width > height)
+              ? VideoContentMode.fit
+              : VideoContentMode.fill
           }
           style={StyleSheet.absoluteFill}
         />

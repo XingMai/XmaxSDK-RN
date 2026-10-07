@@ -66,6 +66,7 @@ const native = {
   } },
   Keyboard: { dismiss() {}, addListener: () => ({ remove() {} }) },
   Platform: { OS: 'ios' },
+  useWindowDimensions: () => ({ width: 390, height: 844 }),
   StyleSheet: { create: styles => styles, absoluteFill: {} },
 };
 const catalog = {
@@ -213,7 +214,7 @@ function screenFixture(t, options = {}) {
     '@xmaxai/react-native-sdk': {
       XmaxLoggerOption: { all: 3 },
       XmaxClient: class { createRealtimeManager({ model }) { models.push(model); return manager; } createStorageManager() { return {}; } },
-      XmaxRealtimeVideo: 'Video', RealtimeModel: { x2_0: 'x2.0' }, VideoContentMode: {},
+      XmaxRealtimeVideo: 'Video', RealtimeModel: { x2_0: 'x2.0' }, VideoContentMode: { fit: 'fit', fill: 'fill' },
       RealtimeConnectionState: { idle: 'idle', connecting: 'connecting', connected: 'connected',
         generating: 'generating', preparing: 'preparing', ready: 'ready' },
       XmaxError: { from: value => value },
@@ -237,6 +238,28 @@ function screenFixture(t, options = {}) {
     },
     counts: () => ({ starts, stops, connects, previews, closes }) };
 }
+
+test('camera uses page layout for fit during rotation even when window metrics remain portrait', async t => {
+  const screen = screenFixture(t);
+  await tick();
+  assert.equal(screen.props('Video').videoContentMode, 'fill');
+  const counts = screen.counts();
+  screen.props('View').onLayout({ nativeEvent: { layout: { width: 844, height: 390 } } });
+  assert.equal(screen.props('Video').videoContentMode, 'fit');
+  screen.props('View').onLayout({ nativeEvent: { layout: { width: 0, height: 0 } } });
+  assert.equal(screen.props('Video').videoContentMode, 'fit');
+  screen.props('View').onLayout({ nativeEvent: { layout: { width: 390, height: 844 } } });
+  assert.equal(screen.props('Video').videoContentMode, 'fill');
+  assert.deepEqual(screen.counts(), counts, 'Layout changes must not restart capture or generation');
+});
+
+test('image preview stays fit in either page orientation', t => {
+  const screen = screenFixture(t, { fileURL: 'file:///fixture.jpg' });
+  for (const [width, height] of [[390, 844], [844, 390]]) {
+    screen.props('View').onLayout({ nativeEvent: { layout: { width, height } } });
+    assert.equal(screen.props('Video').videoContentMode, 'fit');
+  }
+});
 
 test('native entry readiness ignores closing and unfocused events, stays ready across cancelled back gestures, and unsubscribes', t => {
   const h = hooks(), listeners = new Set();

@@ -53,6 +53,13 @@ export interface Spec extends TurboModule {
   /** Normalizes Android RTC stream events for the current owner before JS decoding. */
   adaptRtcVideoEvents(owner: string): boolean;
 
+  /** Installs Android camera pixel rotation and cropping before capture begins. */
+  configureCameraFrames(
+    owner: string,
+    width: number,
+    height: number,
+  ): Promise<void>;
+
   acquire(owner: string): boolean;
 
   isActive(owner: string): boolean;
