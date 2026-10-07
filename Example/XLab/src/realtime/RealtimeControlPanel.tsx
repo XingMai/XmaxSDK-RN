@@ -42,6 +42,7 @@ export function RealtimeControlPanel({
   bottomInset,
   apiKey,
   environment,
+  baseURL,
   prompt,
   onPromptChange,
   onSubmit,
@@ -58,6 +59,8 @@ export function RealtimeControlPanel({
   bottomInset: number;
   apiKey: string;
   environment: XmaxEnvironment;
+  /** Explicit API backend for reference uploads. */
+  baseURL?: string | undefined;
   prompt: string;
   onPromptChange: (text: string) => void;
   onSubmit: (context: RealtimeContext, onFailure?: () => void) => void;
@@ -99,14 +102,19 @@ export function RealtimeControlPanel({
   const categoryViewport = useRef(0),
     categoryOffset = useRef(0);
   const editor = useRef<ComponentRef<typeof TextInput>>(null);
-  const uploads = useReferenceUploads(apiKey, environment, (id, update) => {
-    setReferences(current =>
-      current.map(item => (item.id === id ? { ...item, ...update } : item)),
-    );
-    setPromptReference(current =>
-      current?.id === id ? { ...current, ...update } : current,
-    );
-  });
+  const uploads = useReferenceUploads(
+    apiKey,
+    environment,
+    baseURL,
+    (id, update) => {
+      setReferences(current =>
+        current.map(item => (item.id === id ? { ...item, ...update } : item)),
+      );
+      setPromptReference(current =>
+        current?.id === id ? { ...current, ...update } : current,
+      );
+    },
+  );
 
   useEffect(() => {
     mounted.current = true;

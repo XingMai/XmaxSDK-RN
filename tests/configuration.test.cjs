@@ -13,7 +13,7 @@ compiled.require = name => name === '@xmaxai/react-native-sdk'
 compiled._compile(ts.transpileModule(readFileSync(filename, 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText, filename);
-const { ConfigurationStore } = compiled.exports;
+const { ConfigurationStore, parseBitrateOverride, parseGenerationBitrate, apiBaseURLForEndpoint, environmentForEndpoint } = compiled.exports;
 
 // Model the pinned iOS helper: any present cloudSync NSNumber enables sync,
 // including @NO. This is the native boundary the in-memory store tests omit.
@@ -52,14 +52,14 @@ test('secure adapter saves, restores and deletes local iOS keys with the pinned 
   const secure = iosSecureStorage(), store = new ConfigurationStore(secure);
   await store.load();
   store.setKey('china', 'china-fixture');
-  store.selectEnvironment('global');
+  store.selectEndpoint('global');
   store.setKey('global', 'global-fixture');
   await nextTurn();
   assert.equal(store.getSnapshot().error, null);
 
   const reloaded = new ConfigurationStore(secure);
   await reloaded.load();
-  assert.equal(reloaded.getSnapshot().environment, 'global');
+  assert.equal(reloaded.getSnapshot().endpoint, 'global');
   assert.deepEqual(reloaded.getSnapshot().keys, { china: 'china-fixture', global: 'global-fixture' });
 
   reloaded.setKey('global', '');
@@ -84,17 +84,17 @@ function storage(initial = {}) {
   };
 }
 
-test('keys and last environment survive reload without cross-environment fallback', async () => {
+test('keys and last endpoint survive reload without cross-endpoint fallback', async () => {
   const disk = storage(), store = new ConfigurationStore(disk);
   await store.load();
   store.setKey('china', 'china-fixture');
-  store.selectEnvironment('global');
+  store.selectEndpoint('global');
   assert.equal(store.getSnapshot().keys.global, '');
   store.setKey('global', 'global-fixture');
   await nextTurn();
   const reloaded = new ConfigurationStore(disk);
   await reloaded.load();
-  assert.equal(reloaded.getSnapshot().environment, 'global');
+  assert.equal(reloaded.getSnapshot().endpoint, 'global');
   assert.deepEqual(reloaded.getSnapshot().keys, { china: 'china-fixture', global: 'global-fixture' });
   reloaded.setKey('global', '  ');
   await nextTurn();
@@ -114,7 +114,7 @@ test('rapid edits during a slow write preserve the latest value in each slot', a
   await store.load();
   store.setKey('china', 'old');
   store.setKey('china', 'newer');
-  store.selectEnvironment('global');
+  store.selectEndpoint('global');
   store.setKey('global', 'other');
   store.setKey('china', 'latest');
   assert.equal(store.getSnapshot().saving, true);
@@ -173,20 +173,20 @@ test('initial read is coalesced and input cannot race hydration', async () => {
   const loading = store.load();
   assert.equal(store.load(), loading);
   store.setKey('china', 'ignored');
-  store.selectEnvironment('china');
+  store.selectEndpoint('china');
   gate.resolve();
   await loading;
-  assert.equal(reads, 5);
-  assert.equal(store.getSnapshot().environment, 'global');
+  assert.equal(reads, 9);
+  assert.equal(store.getSnapshot().endpoint, 'global');
   assert.equal(store.getSnapshot().keys.china, 'stored');
 });
 
-test('language changes survive reload independently of API environment and credentials', async () => {
+test('language changes survive reload independently of API endpoint and credentials', async () => {
   const disk = iosSecureStorage(), store = new ConfigurationStore(disk);
   await store.load();
   assert.equal(store.getSnapshot().language, 'system');
   store.setKey('china', 'china-fixture');
-  store.selectEnvironment('global');
+  store.selectEndpoint('global');
   store.setKey('global', 'global-fixture');
   store.selectLanguage('zh-Hans');
   store.selectLanguage('en');
@@ -196,7 +196,7 @@ test('language changes survive reload independently of API environment and crede
   const reloaded = new ConfigurationStore(disk);
   await reloaded.load();
   assert.equal(reloaded.getSnapshot().language, 'en');
-  assert.equal(reloaded.getSnapshot().environment, 'global');
+  assert.equal(reloaded.getSnapshot().endpoint, 'global');
   assert.deepEqual(reloaded.getSnapshot().keys, { china: 'china-fixture', global: 'global-fixture' });
 
   reloaded.selectLanguage('system');
@@ -246,21 +246,112 @@ test('failed language writes keep the newest preference for retry', async () => 
 });
 
 
-test('model selection persists independently of keys and obsolete values fall back to X2.0', async () => {
+test('model selection persists independently of keys and unsupported values fall back to X2.1 Preview', async () => {
   const disk = storage({ china: 'cn-fixture', global: 'global-fixture' });
   const store = new ConfigurationStore(disk);
   await store.load();
-  assert.equal(store.getSnapshot().model, 'x2.0');
-  for (const model of ['x2.0-pro', 'x2.1-preview']) {
-    store.selectModel(model);
-    await nextTurn();
-    const reloaded = new ConfigurationStore(disk);
-    await reloaded.load();
-    assert.equal(reloaded.getSnapshot().model, model);
-    assert.deepEqual(reloaded.getSnapshot().keys, { china: 'cn-fixture', global: 'global-fixture' });
+  assert.equal(store.getSnapshot().model, 'x2.1-preview');
+  store.selectModel('x2.0-pro');
+  assert.equal(store.getSnapshot().model, 'x2.1-preview', 'X2.0 Pro is not offered by XLab');
+  store.selectModel('x2.0');
+  await nextTurn();
+  const reloaded = new ConfigurationStore(disk);
+  await reloaded.load();
+  assert.equal(reloaded.getSnapshot().model, 'x2.0');
+  assert.deepEqual(reloaded.getSnapshot().keys, { china: 'cn-fixture', global: 'global-fixture' });
+  for (const unsupported of ['obsolete-model', 'x2.0-pro']) {
+    disk.values.set('model', unsupported);
+    const fallback = new ConfigurationStore(disk);
+    await fallback.load();
+    assert.equal(fallback.getSnapshot().model, 'x2.1-preview');
   }
-  disk.values.set('model', 'obsolete-model');
+});
+
+test('endpoint selection persists with its own key slot and obsolete values fall back to China', async () => {
+  const disk = storage({ environment: 'obsolete-endpoint' });
   const fallback = new ConfigurationStore(disk);
   await fallback.load();
-  assert.equal(fallback.getSnapshot().model, 'x2.0');
+  assert.equal(fallback.getSnapshot().endpoint, 'china');
+
+  const store = new ConfigurationStore(disk);
+  await store.load();
+  store.selectEndpoint('global');
+  store.setKey('global', 'global-fixture');
+  await nextTurn();
+  const reloaded = new ConfigurationStore(disk);
+  await reloaded.load();
+  assert.equal(reloaded.getSnapshot().endpoint, 'global');
+  assert.deepEqual(reloaded.getSnapshot().keys, { china: '', global: 'global-fixture' });
+});
+
+test('endpoints resolve their API base URL and SDK environment', () => {
+  assert.equal(apiBaseURLForEndpoint('china'), 'https://api.xmaxai.com/open/api/v1');
+  assert.equal(apiBaseURLForEndpoint('global'), 'https://api.xmax.ai/open/api/v1');
+  assert.equal(environmentForEndpoint('global'), 'global');
+  assert.equal(environmentForEndpoint('china'), 'china');
+});
+
+test('downlink bitrate inputs persist independently of the uplink pair', async () => {
+  const disk = storage(), store = new ConfigurationStore(disk);
+  await store.load();
+  assert.equal(store.getSnapshot().downMinBitrate, '');
+  assert.equal(store.getSnapshot().downMaxBitrate, '');
+  store.setBitrate('downMinBitrate', '2000');
+  store.setBitrate('downMaxBitrate', '6000');
+  store.setBitrate('minBitrate', '1000');
+  await nextTurn();
+  const reloaded = new ConfigurationStore(disk);
+  await reloaded.load();
+  assert.equal(reloaded.getSnapshot().downMinBitrate, '2000');
+  assert.equal(reloaded.getSnapshot().downMaxBitrate, '6000');
+  assert.equal(reloaded.getSnapshot().minBitrate, '1000');
+  assert.equal(reloaded.getSnapshot().maxBitrate, '');
+});
+
+test('generation bitrate parsing enforces the server range', () => {
+  assert.equal(parseGenerationBitrate('', ''), null);
+  assert.equal(parseGenerationBitrate(' ', ' '), null);
+  assert.deepEqual(parseGenerationBitrate('2000', '6000'), { minimum: 2000, maximum: 6000 });
+  assert.deepEqual(parseGenerationBitrate('100', '10000'), { minimum: 100, maximum: 10000 });
+  assert.equal(parseGenerationBitrate('99', '6000'), 'invalid');
+  assert.equal(parseGenerationBitrate('0', '6000'), 'invalid');
+  assert.equal(parseGenerationBitrate('2000', '10001'), 'invalid');
+  assert.equal(parseGenerationBitrate('6000', '2000'), 'invalid');
+  assert.equal(parseGenerationBitrate('2000', ''), 'invalid');
+  assert.equal(parseGenerationBitrate('abc', '6000'), 'invalid');
+});
+
+test('bitrate inputs persist across reloads and empty values delete their slots', async () => {
+  const disk = storage(), store = new ConfigurationStore(disk);
+  await store.load();
+  assert.equal(store.getSnapshot().minBitrate, '');
+  assert.equal(store.getSnapshot().maxBitrate, '');
+  store.setBitrate('minBitrate', ' 2000 ');
+  store.setBitrate('maxBitrate', '4000');
+  assert.equal(store.getSnapshot().minBitrate, ' 2000 ');
+  await nextTurn();
+  const reloaded = new ConfigurationStore(disk);
+  await reloaded.load();
+  assert.equal(reloaded.getSnapshot().minBitrate, '2000');
+  assert.equal(reloaded.getSnapshot().maxBitrate, '4000');
+  reloaded.setBitrate('minBitrate', '');
+  await nextTurn();
+  const cleared = new ConfigurationStore(disk);
+  await cleared.load();
+  assert.equal(cleared.getSnapshot().minBitrate, '');
+  assert.equal(cleared.getSnapshot().maxBitrate, '4000');
+  assert.equal(disk.values.has('minBitrate'), false);
+});
+
+test('bitrate override parsing requires a complete valid range or empty input', () => {
+  assert.equal(parseBitrateOverride('', ''), null);
+  assert.equal(parseBitrateOverride('  ', ' '), null);
+  assert.deepEqual(parseBitrateOverride('2000', '4000'), { minimum: 2000, maximum: 4000 });
+  assert.deepEqual(parseBitrateOverride(' 0 ', ' 4000 '), { minimum: 0, maximum: 4000 });
+  assert.equal(parseBitrateOverride('2000', ''), 'invalid');
+  assert.equal(parseBitrateOverride('', '4000'), 'invalid');
+  assert.equal(parseBitrateOverride('abc', '4000'), 'invalid');
+  assert.equal(parseBitrateOverride('20.5', '4000'), 'invalid');
+  assert.equal(parseBitrateOverride('4000', '2000'), 'invalid');
+  assert.equal(parseBitrateOverride('0', '0'), 'invalid');
 });

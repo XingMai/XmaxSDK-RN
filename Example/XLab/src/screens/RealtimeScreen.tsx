@@ -24,6 +24,7 @@ import {
   XmaxRealtimeVideo,
   RealtimeModel,
   VideoContentMode,
+  realtimeModelSpecifications,
   type RealtimeContext,
   RealtimeConnectionState,
   XmaxError,
@@ -40,6 +41,7 @@ import {
   RealtimeErrorToast,
   type RealtimeErrorNotice,
 } from '../realtime/RealtimeErrorToast';
+import type { BitrateOverride } from '../configuration/ConfigurationStore';
 
 /**
  * Owns camera or image preview and its prompt/reference generation lifecycle.
@@ -51,19 +53,28 @@ import {
  * the top controls and uses fit scaling. Controls retain safe-area padding.
  */
 export function RealtimeScreen({
-  model = RealtimeModel.x2_0,
+  model = RealtimeModel.x2_1_preview,
+  bitrate = null,
+  generationBitrate = null,
   apiKey,
   environment,
+  baseURL,
   onBack,
   fileURL,
   customTrajectory = false,
   imageContentType,
   entryReady = true,
 }: {
-  /** Model captured when entering the page; defaults to X2.0. */
+  /** Model captured when entering the page; defaults to X2.1 Preview. */
   model?: RealtimeModel;
+  /** Upload kbps limits captured with the model; null keeps SDK defaults. */
+  bitrate?: BitrateOverride | null;
+  /** Downlink kbps limits sent with the generation start event. */
+  generationBitrate?: BitrateOverride | null;
   apiKey: string;
   environment: XmaxEnvironment;
+  /** Explicit API backend captured when entering the page. */
+  baseURL?: string | undefined;
   onBack: () => void;
   /** Omit for camera capture; otherwise keep this source readable until exit. */
   fileURL?: string;
@@ -142,9 +153,22 @@ export function RealtimeScreen({
       setError(null);
 
       try {
+        // Bitrate overrides ride on the model's default format; dimensions stay
+        // identical to SDK behavior, only the encoder limits change.
+        const videoFormat = bitrate
+          ? {
+              ...realtimeModelSpecifications[model].defaultCameraVideoFormat,
+              minimumBitrate: bitrate.minimum,
+              maximumBitrate: bitrate.maximum,
+            }
+          : undefined;
         const stream = fileURL
-          ? await realtime.createLocalImageStream({ fileURL })
-          : await realtime.createLocalCameraStream();
+          ? await realtime.createLocalImageStream(
+              videoFormat ? { fileURL, videoFormat } : { fileURL },
+            )
+          : await realtime.createLocalCameraStream(
+              videoFormat ? { videoFormat } : undefined,
+            );
 
         if (alive.current && token === epoch.current) {
           local.current = stream;
@@ -163,7 +187,7 @@ export function RealtimeScreen({
         }
       }
     },
-    [showError, nextOperation, fileURL],
+    [showError, nextOperation, fileURL, model, bitrate],
   );
 
   useEffect(() => {
@@ -186,6 +210,7 @@ export function RealtimeScreen({
     const configuredClient = new XmaxClient({
       apiKey,
       environment,
+      baseURL: baseURL ?? null,
       loggerOptions: XmaxLoggerOption.all,
     });
     client.current = configuredClient;
@@ -298,6 +323,7 @@ export function RealtimeScreen({
     entryReady,
     apiKey,
     environment,
+    baseURL,
     model,
     preview,
     showError,
@@ -370,6 +396,12 @@ export function RealtimeScreen({
           context = {
             ...context,
             referencePath: fileURL ? touchReference.current : null,
+          };
+        if (generationBitrate)
+          context = {
+            ...context,
+            minimumBitrate: generationBitrate.minimum,
+            maximumBitrate: generationBitrate.maximum,
           };
         if (signal.aborted || token !== epoch.current) return;
         const remote = await realtime.startGeneration({
@@ -520,6 +552,7 @@ export function RealtimeScreen({
           bottomInset={insets.bottom}
           apiKey={apiKey}
           environment={environment}
+          baseURL={baseURL}
           prompt={prompt}
           onPromptChange={setPrompt}
           onSubmit={(context, onFailure) => {
