@@ -117,7 +117,7 @@ export class RtcManager {
         RuntimeInfo,
         'sdk_version'
       >),
-      sdk_version: '1.0.2',
+      sdk_version: '1.0.3',
     };
   }
 
@@ -332,6 +332,15 @@ export class RtcManager {
     );
     await this.switchCamera(position);
     ensureActive(signal);
+
+    if (Platform.OS === 'android') {
+      await NativeRuntime.configureCameraFrames(
+        this.owner!,
+        format.width,
+        format.height,
+      );
+      ensureActive(signal);
+    }
 
     const ready = waitFor<void>(
       (resolve, reject) => {
@@ -695,6 +704,22 @@ export class RtcManager {
           ? RenderMode.ByteRTCRenderModeFit
           : RenderMode.ByteRTCRenderModeHidden,
     };
+    const key = stream ? JSON.stringify(stream) : 'local';
+
+    // An existing iOS camera canvas can retain its previous render mode when
+    // rebound to the same UIView. Update the active renderer explicitly.
+    if (!stream && viewID && this.views.get(key) === viewID) {
+      check(
+        engine.updateLocalVideoCanvas(
+          StreamIndex.STREAM_INDEX_MAIN,
+          canvas.renderMode,
+          0,
+        ),
+        'Update local video render mode',
+      );
+
+      return;
+    }
 
     if (stream)
       check(
@@ -713,8 +738,6 @@ export class RtcManager {
         engine.setLocalVideoCanvas(StreamIndex.STREAM_INDEX_MAIN, canvas),
         'Bind local view',
       );
-
-    const key = stream ? JSON.stringify(stream) : 'local';
 
     if (viewID) this.views.set(key, viewID);
     else this.views.delete(key);

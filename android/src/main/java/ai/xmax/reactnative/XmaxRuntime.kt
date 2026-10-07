@@ -29,6 +29,7 @@ class XmaxRuntime(private val context: ReactApplicationContext) : NativeXmaxRunt
   private var owner: String? = null
   private var active = false
   private var rtcEvents: XmaxRtcEventAdapter? = null
+  private var cameraFrames: XmaxCameraFrameProcessor? = null
   init { app.registerActivityLifecycleCallbacks(this) }
   override fun getName() = NAME
 
@@ -84,7 +85,25 @@ class XmaxRuntime(private val context: ReactApplicationContext) : NativeXmaxRunt
     owner = token; active = true; return true
   }
   @Synchronized override fun isActive(token: String): Boolean = owner == token && active
-  @Synchronized override fun release(token: String) { if (owner == token) { closeRtcEvents(); imageVideo.stop(); active = false; owner = null } }
+  @Synchronized override fun release(token: String) { if (owner == token) { closeRtcEvents(); imageVideo.stop(); cameraFrames = null; active = false; owner = null } }
+
+  /** Holds a strong processor reference for the entire lifetime of this RTC engine. */
+  @Synchronized override fun configureCameraFrames(token: String, width: Double, height: Double, promise: Promise) {
+    try {
+      check(isActive(token)) { "Media engine is not active" }
+      require(XmaxImageVideoFormat.isValid(width, height, 30.0)) { "Invalid camera video format" }
+      val engine = requireNotNull(XmaxRtcEngineAccess.current()) { "RTC engine is unavailable" }
+      val processor = XmaxCameraFrameProcessor(width.toInt(), height.toInt())
+      val config = com.ss.bytertc.engine.video.VideoPreprocessorConfig().apply {
+        requiredPixelFormat = com.ss.bytertc.engine.data.VideoPixelFormat.I420
+      }
+      check(engine.registerLocalVideoProcessor(processor, config) == 0) { "Unable to configure camera frame processing" }
+      cameraFrames = processor
+      promise.resolve(null)
+    } catch (error: Exception) {
+      promise.reject("MEDIA_ERROR", "Unable to configure camera frame processing", error)
+    }
+  }
 
   /** Adapts only the event handler belonging to the current media lease. */
   @Synchronized override fun adaptRtcVideoEvents(token: String): Boolean {
@@ -151,7 +170,7 @@ class XmaxRuntime(private val context: ReactApplicationContext) : NativeXmaxRunt
   @Synchronized private fun stopOwnedEngine() {
     if (owner != null && active) {
       XmaxNativeLogger.write("info", "[Xmax][Media] Releasing owned capture", 1)
-      closeRtcEvents(); imageVideo.stop(); active = false; RTCVideo.destroyRTCVideo() }
+      closeRtcEvents(); imageVideo.stop(); active = false; RTCVideo.destroyRTCVideo(); cameraFrames = null }
   }
   override fun invalidate() {
     app.unregisterActivityLifecycleCallbacks(this)

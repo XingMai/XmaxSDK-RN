@@ -9,6 +9,7 @@ const nativeRuntime = {
   randomUUID: () => 'fixture-owner', acquire: () => true, isActive: () => true,
   async prepareRuntime() {},
   adaptRtcVideoEvents(owner) { nativeCalls.push(['adaptEvents', owner]); return true; },
+  async configureCameraFrames(owner, width, height) { nativeCalls.push(['cameraFrames', owner, width, height]); },
   release() {},
   async startImageVideo(...args) { nativeCalls.push(['start', ...args]); },
   setImageVideoTask(owner, taskID) { nativeCalls.push(['task', owner, taskID]); return true; },
@@ -26,6 +27,7 @@ const orientation = { PORTRAIT: 1, LANDSCAPE: 2 };
 mock.module('@volcengine/react-native-rtc', {
   namedExports: {
     VideoOrientation: orientation,
+    VideoRotationMode: { FOLLOW_APP: 0, FOLLOW_GSENSOR: 1 },
     VideoRotation: { VIDEO_ROTATION_0: 0, VIDEO_ROTATION_180: 2 },
     CameraId: { CAMERA_ID_FRONT: 0, CAMERA_ID_BACK: 1 },
     MirrorType: { MIRROR_TYPE_NONE: 0, MIRROR_TYPE_RENDER: 1, MIRROR_TYPE_RENDER_AND_ENCODER: 2 },
@@ -72,6 +74,7 @@ mock.module('@volcengine/react-native-rtc', {
           calls,
           room,
           setLocalVideoCanvas(index, canvas) { calls.push(['bindLocal', index, canvas]); return 0; },
+          updateLocalVideoCanvas(index, mode, background) { calls.push(['updateLocal', index, mode, background]); return 0; },
           setRemoteVideoCanvas(key, canvas) { calls.push(['bindRemote', key, canvas]); return 0; },
           setRtcVideoEventHandler(handler) { this.handler = handler; },
           startVideoCapture() { this.handler.onFirstLocalVideoFrameCaptured(0); },
@@ -79,6 +82,7 @@ mock.module('@volcengine/react-native-rtc', {
           setVideoCaptureRotation(value) { calls.push(['rotation', value]); return 0; },
           setLocalVideoMirrorType(value) { calls.push(['mirror', value]); return 0; },
           setVideoOrientation(value) { calls.push(['orientation', value]); return 0; },
+          setVideoRotationMode(value) { calls.push(['rotationMode', value]); return 0; },
           setVideoCaptureConfig(value) { calls.push(['capture', value.width, value.height, value.fps]); },
           setVideoEncoderConfig([value]) { this.encoding = value; calls.push(['encoder', value.width, value.height]); },
           setDummyCaptureImagePath() { calls.push(['image']); },
@@ -135,7 +139,10 @@ test('back camera normalizes frame orientation before capture for portrait, land
       try {
         const signal = new AbortController().signal;
         await rtc.open(signal);
+        const callStart = nativeCalls.length;
         await rtc.startCamera({ width, height, fps: 24 }, CameraPosition.back, signal);
+        assert.deepEqual(nativeCalls.slice(callStart).filter(([name]) => name === 'cameraFrames'),
+          os === 'android' ? [['cameraFrames', 'fixture-owner', width, height]] : []);
         assert.deepEqual(engines.at(-1).calls, [
           ['orientation', expected], ['capture', width, height, 24],
           ['camera', 1], ['rotation', 0], ['mirror', 0],
@@ -172,6 +179,32 @@ test('iOS 27 rear-camera rotation compensation resets on front capture and stays
       await rtc.close();
       platform.OS = 'android';
       osVersion = '26.6';
+    }
+  }
+});
+
+test('Android camera capture cannot start after processor registration is cancelled or fails', async t => {
+  for (const os of ['android']) {
+    platform.OS = os;
+    for (const failure of ['cancel', 'registration']) {
+      const controller = new AbortController();
+      const rtc = new RtcManager();
+      await rtc.open(controller.signal);
+      const capture = t.mock.method(engines.at(-1), 'startVideoCapture');
+      const configure = t.mock.method(nativeRuntime, 'configureCameraFrames', async () => {
+        if (failure === 'cancel') controller.abort();
+        else throw new Error('processor unavailable');
+      });
+      try {
+        await assert.rejects(rtc.startCamera(
+          { width: 1024, height: 1920, fps: 30 }, CameraPosition.front, controller.signal,
+        ));
+        assert.equal(capture.mock.callCount(), 0);
+      } finally {
+        configure.mock.restore();
+        capture.mock.restore();
+        await rtc.close();
+      }
     }
   }
 });
@@ -422,6 +455,34 @@ test('Android fails opening if the owned RTC handler cannot be adapted', async t
 });
 
 for (const os of ['ios', 'android']) {
+  test(`${os}: camera mode changes update the mounted renderer without rebinding`, async t => {
+    platform.OS = os;
+    const rtc = new RtcManager();
+    await rtc.open(new AbortController().signal);
+    const engine = engines.at(-1);
+    try {
+      rtc.bind('camera', null, 'fill');
+      rtc.bind('camera', null, 'fit');
+      rtc.bind('camera', null, 'fill');
+      assert.deepEqual(engine.calls.filter(([name]) => name === 'updateLocal'), [
+        ['updateLocal', 0, 1, 0],
+        ['updateLocal', 0, 2, 0],
+      ]);
+      assert.equal(engine.calls.filter(([name]) => name === 'bindLocal').length, 1);
+
+      const update = t.mock.method(engine, 'updateLocalVideoCanvas', () => -1);
+      assert.throws(() => rtc.bind('camera', null, 'fit'), { code: 'RTC_ERROR' });
+      update.mock.restore();
+      rtc.bind('camera', null, 'fit');
+      rtc.unbind('camera', null);
+      rtc.bind('camera', null, 'fit');
+      rtc.bind('replacement', null, 'fill');
+      assert.equal(engine.calls.filter(([name]) => name === 'bindLocal').length, 3);
+      rtc.unbind('camera', null);
+      assert.equal(engine.calls.filter(([name]) => name === 'detachLocal').length, 1);
+    } finally { await rtc.close(); }
+  });
+
   test(`${os}: stale canvas disposal cannot detach the replacement or a closed engine`, async () => {
     platform.OS = os;
     const rtc = new RtcManager();

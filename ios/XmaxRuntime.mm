@@ -57,6 +57,15 @@ RCT_EXPORT_MODULE(XmaxRuntime)
   return [self.implementation isActive:owner];
 }
 
+// Camera pixel normalization is currently enabled only on Android.
+- (void)configureCameraFrames:(NSString *)owner
+                       width:(double)width
+                      height:(double)height
+                     resolve:(RCTPromiseResolveBlock)resolve
+                      reject:(RCTPromiseRejectBlock)reject {
+  resolve(nil);
+}
+
 - (void)release:(NSString *)owner {
   [self.implementation release:owner];
 }

@@ -204,7 +204,7 @@ export function XLabNavigator(props: ConfigurationContextValue) {
           screenOptions={{
             headerShown: false,
             headerBackButtonMenuEnabled: false,
-            orientation: 'portrait_up',
+            orientation: 'default',
             contentStyle: styles.content,
             animation: 'slide_from_right',
             gestureEnabled: true,
