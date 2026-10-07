@@ -29,11 +29,28 @@ export function roomEvent(
             ...(context.referencePath
               ? { ref_image_path: context.referencePath }
               : {}),
+            // Downlink limits ride only on start; updates keep the task's values.
+            ...(event === 'start' ? downlinkBitrateParams(context) : {}),
           },
         }
       : {}),
     runtime,
   });
+}
+
+/** Maps context bitrate fields to the wire schema, skipping unset values. */
+function downlinkBitrateParams(context: RealtimeContext): {
+  min_bitrate?: number;
+  max_bitrate?: number;
+} {
+  const params: { min_bitrate?: number; max_bitrate?: number } = {};
+
+  if (context.minimumBitrate != null)
+    params.min_bitrate = context.minimumBitrate;
+  if (context.maximumBitrate != null)
+    params.max_bitrate = context.maximumBitrate;
+
+  return params;
 }
 
 /** iOS tracks payload contains model pixels and identities, without runtime or input SEI. */

@@ -109,7 +109,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       new RealtimeSessionService(
         new ApiService(
           config.apiKey,
-          realtimeAPIBaseURL(config.environment, options.model),
+          config.baseURL ??
+            realtimeAPIBaseURL(config.environment, options.model),
           this.rtc.runtime,
         ),
       ),
